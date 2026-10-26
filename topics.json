@@ -1,0 +1,76 @@
+{
+  "updatedAt": "2026-10-26T19:20:00+08:00",
+  "source": "EconPulse calendar · Mon 26 Oct 2026 ET context · e438280",
+  "topics": [
+    {
+      "id": "quiet-mon",
+      "kind": "calendar",
+      "title": "Mon quiet day — no high-impact prints",
+      "summary": "Mon 26 Oct 2026 ET: EconPulse shows no high-impact cards today. Desk stays light until Wed cluster.",
+      "tags": ["calendar", "quiet"]
+    },
+    {
+      "id": "fomc-oct",
+      "kind": "calendar",
+      "title": "Wed FOMC Oct 27–28 · 2:00pm ET",
+      "summary": "FOMC decision Wed 28 Oct 2pm ET (no SEP). Street/Reuters lean hold after Sep hike; path language into Dec is the tape. Powell presser 2:30pm.",
+      "tags": ["FOMC", "Fed", "rates"]
+    },
+    {
+      "id": "boc-oct",
+      "kind": "calendar",
+      "title": "Wed BoC + MPR · 9:45am ET",
+      "summary": "BoC overnight + Monetary Policy Report Wed 28 Oct 9:45am ET. Prior hold 2.25%; Reuters poll leans +25bp to 2.50%. Same day as FOMC.",
+      "tags": ["BoC", "Canada", "rates"]
+    },
+    {
+      "id": "gdp-pce-thu",
+      "kind": "calendar",
+      "title": "Thu GDP advance Q3 + PCE Sep · 8:30am ET",
+      "summary": "BEA Thu 29 Oct 8:30am ET: GDP advance Q3 + Personal Income/Outlays (PCE). Fed’s preferred inflation gauge right after FOMC.",
+      "tags": ["GDP", "PCE", "BEA"]
+    },
+    {
+      "id": "uk-pmi-flash",
+      "kind": "actual",
+      "title": "UK flash PMI Oct · Comp/Svc 53.1 · Mfg 52.8",
+      "summary": "Freeze-gap fill: UK PMI flash Oct Comp/Services 53.1, Mfg 52.8 — still expansion. Commit fd18f58.",
+      "tags": ["PMI", "UK", "actual"]
+    },
+    {
+      "id": "umich-oct-final",
+      "kind": "actual",
+      "title": "UMich Oct final CSI 48.0",
+      "summary": "UMich consumer sentiment final Oct CSI 48.0 — soft confidence into FOMC week.",
+      "tags": ["UMich", "sentiment", "actual"]
+    },
+    {
+      "id": "ca-cpi-sep",
+      "kind": "actual",
+      "title": "Canada CPI Sep +3.1% y/y (gas-led)",
+      "summary": "StatCan CPI Sep +3.1% y/y / +0.1% m/m; gasoline +27.8% y/y. Key BoC input before Oct 28.",
+      "tags": ["CPI", "Canada", "BoC"]
+    },
+    {
+      "id": "wti-fade",
+      "kind": "news",
+      "title": "WTI under $101 after Fri spike",
+      "summary": "MarketWatch: WTI 100.97 (−2.23% vs Fri 103.27) under $101 · Brent 109.47 (−2%) · Sunday Globex fade.",
+      "tags": ["oil", "WTI", "tape"]
+    },
+    {
+      "id": "nq-gap-fade",
+      "kind": "news",
+      "title": "NQ Sunday gap fully faded",
+      "summary": "Asia open quiet: ES +0.08% · NQ +0.09%. Sunday NQ gap fade complete; earlier ±0.5% alert cleared.",
+      "tags": ["NQ", "ES", "tape"]
+    },
+    {
+      "id": "radio-fomc-week",
+      "kind": "radio",
+      "title": "Daily radio · FOMC week briefing",
+      "summary": "EconPulse daily radio theme: quiet Mon → Tue durables/conf → Wed BoC+FOMC double → Thu GDP/PCE. Automations hub lastItems quiet after freeze-gap backfill.",
+      "tags": ["radio", "agenda", "FOMC"]
+    }
+  ]
+}

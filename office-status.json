@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-10-26T18:20:33+08:00",
+  "updatedAt": "2026-10-26T19:25:00+08:00",
   "killSwitch": "inactive",
   "paper": {
     "balance": 10000,
@@ -143,5 +143,7 @@
       "at": "2026-10-26T00:04:00+08:00",
       "level": "ok"
     }
-  ]
+  ],
+  "version": "0.4",
+  "topicsNote": "Live chat topics load from topics.json (EconPulse calendar/news/radio). Optional topics[] here merges in."
 }
