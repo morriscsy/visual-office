@@ -1,10 +1,18 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { AGENTS, statusLabel, FLOOR_Y, deskSitOffset } from "./agents.js";
 import { pickTopic, buildDialogue, buildPantryAside } from "./topics.js";
 
-/* HackerNoon-style multi-floor cutaway + Morris walnut + subtle neon */
+/* v0.6 — HQ PBR + bloom "ray-traced look" + optional WebGL path tracer */
+
 const C = {
   exterior: 0xe8dfd0,
   exteriorEdge: 0xd4c7b0,
@@ -41,27 +49,152 @@ const C = {
   receptionStripe: 0xd45a5a
 };
 
-const FH = 3.55; // floor-to-floor
+const FH = 3.55;
 const WALL_H = 3.15;
-const BW = 16; // building width (X)
-const BD = 12; // building depth (Z)
+const BW = 16;
+const BD = 12;
 const HALF_W = BW / 2;
 const HALF_D = BD / 2;
 
 function fy(floor) { return FLOOR_Y[floor] ?? 0; }
 
-function box(w, h, d, color, opts = {}) {
-  const geo = new THREE.BoxGeometry(w, h, d);
-  const mat = new THREE.MeshStandardMaterial({
+let WOOD_MAP = null;
+let WOOD_ROUGH = null;
+let FLOOR_MAP = null;
+
+function makeNoiseCanvas(size, paint) {
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d");
+  paint(ctx, size);
+  return c;
+}
+
+function initTextures() {
+  if (WOOD_MAP) return;
+  const wood = makeNoiseCanvas(512, (ctx, s) => {
+    const g = ctx.createLinearGradient(0, 0, s, 0);
+    g.addColorStop(0, "#5a3824");
+    g.addColorStop(0.35, "#7a4e2e");
+    g.addColorStop(0.55, "#6b4423");
+    g.addColorStop(0.8, "#8a6239");
+    g.addColorStop(1, "#5c4033");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, s, s);
+    for (let i = 0; i < 90; i++) {
+      const x = Math.random() * s;
+      ctx.strokeStyle = `rgba(40,22,12,${0.04 + Math.random() * 0.1})`;
+      ctx.lineWidth = 0.6 + Math.random() * 2.2;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      let yy = 0;
+      while (yy < s) {
+        const nx = x + Math.sin(yy * 0.04 + i) * (2 + Math.random() * 4);
+        ctx.lineTo(nx, yy + 8);
+        yy += 8;
+      }
+      ctx.stroke();
+    }
+    for (let i = 0; i < 40; i++) {
+      ctx.fillStyle = `rgba(255,220,180,${0.015 + Math.random() * 0.03})`;
+      ctx.fillRect(Math.random() * s, Math.random() * s, 2 + Math.random() * 40, 1);
+    }
+  });
+  WOOD_MAP = new THREE.CanvasTexture(wood);
+  WOOD_MAP.wrapS = WOOD_MAP.wrapT = THREE.RepeatWrapping;
+  WOOD_MAP.repeat.set(1.6, 1.2);
+  WOOD_MAP.colorSpace = THREE.SRGBColorSpace;
+  WOOD_MAP.anisotropy = 8;
+
+  const rough = makeNoiseCanvas(256, (ctx, s) => {
+    const img = ctx.createImageData(s, s);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = 140 + (Math.random() * 80) | 0;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+      img.data[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+  });
+  WOOD_ROUGH = new THREE.CanvasTexture(rough);
+  WOOD_ROUGH.wrapS = WOOD_ROUGH.wrapT = THREE.RepeatWrapping;
+
+  const floor = makeNoiseCanvas(512, (ctx, s) => {
+    ctx.fillStyle = "#efe6d6";
+    ctx.fillRect(0, 0, s, s);
+    const plank = s / 8;
+    for (let x = 0; x < s; x += plank) {
+      ctx.fillStyle = x / plank % 2 === 0 ? "#f3ebdc" : "#e8decc";
+      ctx.fillRect(x, 0, plank - 2, s);
+      ctx.strokeStyle = "rgba(180,160,130,0.35)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x + plank - 1, 0);
+      ctx.lineTo(x + plank - 1, s);
+      ctx.stroke();
+      for (let y = 0; y < s; y += plank * 2.2) {
+        ctx.strokeStyle = "rgba(170,150,120,0.22)";
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + plank - 2, y);
+        ctx.stroke();
+      }
+    }
+  });
+  FLOOR_MAP = new THREE.CanvasTexture(floor);
+  FLOOR_MAP.wrapS = FLOOR_MAP.wrapT = THREE.RepeatWrapping;
+  FLOOR_MAP.repeat.set(4, 3);
+  FLOOR_MAP.colorSpace = THREE.SRGBColorSpace;
+  FLOOR_MAP.anisotropy = 8;
+}
+
+function matStandard(color, opts = {}) {
+  return new THREE.MeshStandardMaterial({
     color,
     roughness: opts.roughness ?? 0.75,
     metalness: opts.metalness ?? 0.05,
     emissive: opts.emissive != null ? opts.emissive : 0x000000,
     emissiveIntensity: opts.emissiveIntensity ?? 0,
+    map: opts.map || null,
+    roughnessMap: opts.roughnessMap || null,
+    envMapIntensity: opts.envMapIntensity ?? 1,
     transparent: opts.opacity != null && opts.opacity < 1,
-    opacity: opts.opacity ?? 1
+    opacity: opts.opacity ?? 1,
+    side: opts.side ?? THREE.FrontSide
   });
-  const m = new THREE.Mesh(geo, mat);
+}
+
+function matPhysical(color, opts = {}) {
+  return new THREE.MeshPhysicalMaterial({
+    color,
+    roughness: opts.roughness ?? 0.35,
+    metalness: opts.metalness ?? 0.05,
+    emissive: opts.emissive != null ? opts.emissive : 0x000000,
+    emissiveIntensity: opts.emissiveIntensity ?? 0,
+    map: opts.map || null,
+    roughnessMap: opts.roughnessMap || null,
+    envMapIntensity: opts.envMapIntensity ?? 1.2,
+    transparent: (opts.opacity != null && opts.opacity < 1) || (opts.transmission ?? 0) > 0,
+    opacity: opts.opacity ?? 1,
+    transmission: opts.transmission ?? 0,
+    thickness: opts.thickness ?? 0.35,
+    ior: opts.ior ?? 1.45,
+    clearcoat: opts.clearcoat ?? 0,
+    clearcoatRoughness: opts.clearcoatRoughness ?? 0.25,
+    attenuationColor: opts.attenuationColor,
+    attenuationDistance: opts.attenuationDistance,
+    side: opts.side ?? THREE.FrontSide
+  });
+}
+
+function box(w, h, d, color, opts = {}) {
+  const geo = opts.rounded
+    ? new RoundedBoxGeometry(w, h, d, opts.segments ?? 3, opts.radius ?? Math.min(0.05, Math.min(w, h, d) * 0.12))
+    : new THREE.BoxGeometry(w, h, d);
+  const usePhysical = !!opts.physical || !!opts.transmission || !!opts.clearcoat;
+  const m = new THREE.Mesh(
+    geo,
+    usePhysical ? matPhysical(color, opts) : matStandard(color, opts)
+  );
   m.castShadow = opts.castShadow !== false;
   m.receiveShadow = opts.receiveShadow !== false;
   if (opts.pos) m.position.set(...opts.pos);
@@ -70,7 +203,7 @@ function box(w, h, d, color, opts = {}) {
 
 function neonStrip(w, h, d, color, pos, intensity = 1.1) {
   return box(w, h, d, color, {
-    roughness: 0.35, metalness: 0.2,
+    roughness: 0.25, metalness: 0.35,
     emissive: color, emissiveIntensity: intensity,
     castShadow: false, receiveShadow: false, pos
   });
@@ -89,22 +222,24 @@ function makeAvatar(agent) {
   const g = new THREE.Group();
   g.userData.agentId = agent.id;
 
-  const body = box(0.5, 0.75, 0.32, agent.color, { roughness: 0.55 });
+  const body = box(0.5, 0.75, 0.32, agent.color, {
+    roughness: 0.45, clearcoat: 0.25, physical: true, rounded: true, radius: 0.06
+  });
   body.position.y = 0.78;
   g.add(body);
 
   const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.24, 14, 14),
-    new THREE.MeshStandardMaterial({ color: 0xf2d6c2, roughness: 0.65 })
+    new THREE.SphereGeometry(0.24, 24, 24),
+    matPhysical(0xf2d6c2, { roughness: 0.55, clearcoat: 0.15 })
   );
   head.position.y = 1.35;
   head.castShadow = true;
   g.add(head);
 
   const glow = new THREE.Mesh(
-    new THREE.SphereGeometry(0.1, 10, 10),
-    new THREE.MeshStandardMaterial({
-      color: 0x8a948c, emissive: 0x8a948c, emissiveIntensity: 0.6, opacity: 0.85, transparent: true
+    new THREE.SphereGeometry(0.1, 16, 16),
+    matStandard(0x8a948c, {
+      emissive: 0x8a948c, emissiveIntensity: 0.6, opacity: 0.85
     })
   );
   glow.position.set(0, 1.72, 0);
@@ -112,9 +247,9 @@ function makeAvatar(agent) {
   g.userData.glow = glow;
   g.userData.body = body;
 
-  const legL = box(0.12, 0.4, 0.16, 0x5a6a62, { roughness: 0.8 });
+  const legL = box(0.12, 0.4, 0.16, 0x5a6a62, { roughness: 0.8, rounded: true, radius: 0.03 });
   legL.position.set(-0.12, 0.2, 0);
-  const legR = box(0.12, 0.4, 0.16, 0x5a6a62, { roughness: 0.8 });
+  const legR = box(0.12, 0.4, 0.16, 0x5a6a62, { roughness: 0.8, rounded: true, radius: 0.03 });
   legR.position.set(0.12, 0.2, 0);
   g.add(legL, legR);
   g.userData.legs = [legL, legR];
@@ -139,59 +274,96 @@ function makeAvatar(agent) {
 }
 
 function walnutDeskAt(scene, x, y, z) {
-  scene.add(box(1.45, 0.09, 0.78, C.deskTop, { roughness: 0.48, pos: [x, y + 0.72, z] }));
+  initTextures();
+  scene.add(box(1.45, 0.09, 0.78, C.deskTop, {
+    roughness: 0.38, metalness: 0.05, clearcoat: 0.35, clearcoatRoughness: 0.3,
+    physical: true, rounded: true, radius: 0.035,
+    map: WOOD_MAP, roughnessMap: WOOD_ROUGH, envMapIntensity: 0.85,
+    pos: [x, y + 0.72, z]
+  }));
   scene.add(box(1.25, 0.014, 0.045, C.deskGrain, {
-    roughness: 0.55, castShadow: false, pos: [x, y + 0.775, z]
+    roughness: 0.5, castShadow: false, map: WOOD_MAP, pos: [x, y + 0.775, z]
   }));
   [[-0.58, -0.28], [0.58, -0.28], [-0.58, 0.28], [0.58, 0.28]].forEach(([dx, dz]) => {
-    scene.add(box(0.09, 0.68, 0.09, C.deskLeg, { roughness: 0.6, pos: [x + dx, y + 0.34, z + dz] }));
+    scene.add(box(0.09, 0.68, 0.09, C.deskLeg, {
+      roughness: 0.55, rounded: true, radius: 0.02, map: WOOD_MAP, pos: [x + dx, y + 0.34, z + dz]
+    }));
   });
-  scene.add(box(0.62, 0.4, 0.05, C.monitor, { pos: [x, y + 1.05, z - 0.26] }));
+  scene.add(box(0.62, 0.4, 0.05, C.monitor, {
+    roughness: 0.35, metalness: 0.25, clearcoat: 0.4, physical: true, rounded: true, radius: 0.02,
+    pos: [x, y + 1.05, z - 0.26]
+  }));
   scene.add(box(0.52, 0.3, 0.02, C.screen, {
-    roughness: 0.3, metalness: 0.2,
-    emissive: C.neonCyan, emissiveIntensity: 0.28,
+    roughness: 0.15, metalness: 0.4,
+    emissive: C.neonCyan, emissiveIntensity: 0.45,
+    physical: true, clearcoat: 0.6,
     pos: [x, y + 1.05, z - 0.22]
   }));
-  scene.add(box(0.5, 0.07, 0.5, C.chair, { roughness: 0.65, pos: [x, y + 0.45, z + 0.62] }));
-  scene.add(box(0.5, 0.48, 0.07, C.chairBack, { roughness: 0.65, pos: [x, y + 0.72, z + 0.85] }));
-  scene.add(box(0.07, 0.4, 0.07, C.deskLeg, { pos: [x, y + 0.22, z + 0.62] }));
+  scene.add(box(0.5, 0.07, 0.5, C.chair, {
+    roughness: 0.55, rounded: true, radius: 0.04, map: WOOD_MAP, pos: [x, y + 0.45, z + 0.62]
+  }));
+  scene.add(box(0.5, 0.48, 0.07, C.chairBack, {
+    roughness: 0.55, rounded: true, radius: 0.035, map: WOOD_MAP, pos: [x, y + 0.72, z + 0.85]
+  }));
+  scene.add(box(0.07, 0.4, 0.07, C.deskLeg, {
+    roughness: 0.5, rounded: true, radius: 0.02, pos: [x, y + 0.22, z + 0.62]
+  }));
 }
 
 function walnutShelf(scene, x, y, z) {
-  scene.add(box(1.2, 1.35, 0.26, C.shelf, { roughness: 0.55, pos: [x, y + 0.75, z] }));
+  initTextures();
+  scene.add(box(1.2, 1.35, 0.26, C.shelf, {
+    roughness: 0.48, rounded: true, radius: 0.03, map: WOOD_MAP, pos: [x, y + 0.75, z]
+  }));
   for (let i = 0; i < 3; i++) {
     scene.add(box(1.08, 0.035, 0.22, C.deskGrain, {
-      roughness: 0.5, castShadow: false, pos: [x, y + 0.35 + i * 0.35, z + 0.02]
+      roughness: 0.45, castShadow: false, map: WOOD_MAP, pos: [x, y + 0.35 + i * 0.35, z + 0.02]
     }));
   }
 }
 
 function plantAt(scene, x, y, z, scale = 1) {
-  scene.add(box(0.32 * scale, 0.28 * scale, 0.32 * scale, C.plantPot, { pos: [x, y + 0.14 * scale, z] }));
+  scene.add(box(0.32 * scale, 0.28 * scale, 0.32 * scale, C.plantPot, {
+    roughness: 0.7, rounded: true, radius: 0.04, pos: [x, y + 0.14 * scale, z]
+  }));
   const foliage = new THREE.Mesh(
-    new THREE.ConeGeometry(0.38 * scale, 0.85 * scale, 7),
-    new THREE.MeshStandardMaterial({ color: C.plant, roughness: 0.85 })
+    new THREE.SphereGeometry(0.38 * scale, 16, 12),
+    matStandard(C.plant, { roughness: 0.9, envMapIntensity: 0.4 })
   );
   foliage.position.set(x, y + 0.55 * scale, z);
+  foliage.scale.set(1, 1.15, 1);
   foliage.castShadow = true;
   scene.add(foliage);
 }
 
 function treeAt(scene, x, z, h = 2.4) {
-  scene.add(box(0.22, h * 0.35, 0.22, 0x5c4033, { pos: [x, h * 0.17, z] }));
+  scene.add(box(0.22, h * 0.35, 0.22, 0x5c4033, {
+    roughness: 0.85, rounded: true, radius: 0.04, pos: [x, h * 0.17, z]
+  }));
   const crown = new THREE.Mesh(
-    new THREE.ConeGeometry(0.85, h * 0.7, 6),
-    new THREE.MeshStandardMaterial({ color: C.tree, roughness: 0.9 })
+    new THREE.SphereGeometry(0.85, 14, 12),
+    matStandard(C.tree, { roughness: 0.92 })
   );
   crown.position.set(x, h * 0.55, z);
+  crown.scale.set(1, h * 0.35, 1);
   crown.castShadow = true;
   scene.add(crown);
 }
 
-function glassPanel(w, h, d, pos) {
-  return box(w, h, d, C.glass, {
-    roughness: 0.15, metalness: 0.15, opacity: 0.32,
-    castShadow: false, pos
+function glassPanel(w, h, d, pos, mobile) {
+  if (mobile) {
+    return box(w, h, d, C.glass, {
+      roughness: 0.12, metalness: 0.15, opacity: 0.28,
+      physical: true, clearcoat: 0.5, envMapIntensity: 1.6,
+      castShadow: false, pos
+    });
+  }
+  return box(w, h, d, 0xd7eef4, {
+    roughness: 0.05, metalness: 0,
+    transmission: 0.85, thickness: 0.4, ior: 1.5,
+    opacity: 1, physical: true, clearcoat: 1, clearcoatRoughness: 0.05,
+    envMapIntensity: 1.4, castShadow: false, pos,
+    attenuationColor: new THREE.Color(0xc5e4ec), attenuationDistance: 2.5
   });
 }
 
@@ -201,103 +373,86 @@ function addFloorBadge(scene, floor, title) {
 }
 
 function buildExterior(scene) {
-  // Soft ground plane (cream void feel)
-  const ground = box(48, 0.08, 40, 0xeae3d6, { roughness: 1, castShadow: false, pos: [0, -0.12, 2] });
+  initTextures();
+  const ground = box(48, 0.08, 40, 0xeae3d6, {
+    roughness: 0.95, castShadow: false, map: FLOOR_MAP, pos: [0, -0.12, 2]
+  });
   scene.add(ground);
-
-  // Road on the left
   scene.add(box(4.2, 0.06, 28, C.road, { roughness: 0.95, castShadow: false, pos: [-HALF_W - 4.5, -0.06, 1] }));
   for (let z = -10; z <= 12; z += 2.2) {
     scene.add(box(0.18, 0.02, 1.0, C.roadLine, { castShadow: false, receiveShadow: false, pos: [-HALF_W - 4.5, -0.02, z] }));
   }
-
-  // Low-poly trees
   [[-HALF_W - 7, -6], [-HALF_W - 6.5, 2], [-HALF_W - 7.2, 8], [HALF_W + 3, -7], [HALF_W + 4, 6]].forEach(([x, z], i) => {
     treeAt(scene, x, z, 2.0 + (i % 3) * 0.35);
   });
-
-  // Planter near entrance
   plantAt(scene, -1.5, 0, HALF_D + 1.2, 1.1);
   plantAt(scene, 1.5, 0, HALF_D + 1.2, 0.95);
 }
 
 function buildSlab(scene, floor) {
+  initTextures();
   const y = fy(floor);
-  // Floor plate
-  scene.add(box(BW, 0.16, BD, C.floor, { roughness: 0.88, pos: [0, y - 0.08, 0] }));
-  // Subtle plank lines
+  scene.add(box(BW, 0.16, BD, C.floor, {
+    roughness: 0.55, metalness: 0.02, clearcoat: 0.2, physical: true,
+    map: FLOOR_MAP, envMapIntensity: 0.55, pos: [0, y - 0.08, 0]
+  }));
   for (let i = -7; i <= 7; i += 2) {
     scene.add(box(0.03, 0.015, BD - 0.4, C.floorEdge, {
-      roughness: 0.95, castShadow: false, pos: [i, y + 0.01, 0]
+      roughness: 0.9, castShadow: false, pos: [i, y + 0.01, 0]
     }));
   }
-  // Ceiling underside for floors above (cutaway slab edge)
   if (floor < 3) {
     scene.add(box(BW + 0.3, 0.18, BD + 0.3, C.slab, {
-      roughness: 0.8, pos: [0, y + WALL_H + 0.09, 0]
+      roughness: 0.7, pos: [0, y + WALL_H + 0.09, 0]
     }));
   }
 }
 
-function buildShellWalls(scene) {
-  // Only back (-Z) and left (-X) exterior walls — open front & right cutaway
+function buildShellWalls(scene, mobile) {
   for (let f = 1; f <= 3; f++) {
     const y = fy(f);
     const midY = y + WALL_H / 2;
-    // Back wall
-    scene.add(box(BW, WALL_H, 0.18, C.exterior, { roughness: 0.82, pos: [0, midY, -HALF_D] }));
-    // Left wall (with window cutouts feel via glass strips)
-    scene.add(box(0.18, WALL_H, BD, C.exterior, { roughness: 0.82, pos: [-HALF_W, midY, 0] }));
-    // Window bands on left
-    scene.add(box(0.06, 1.1, BD - 1.5, C.glass, {
-      roughness: 0.2, metalness: 0.1, opacity: 0.4, castShadow: false,
-      pos: [-HALF_W + 0.08, y + 1.5, 0]
-    }));
-    // Thin front rail (cutaway edge)
+    scene.add(box(BW, WALL_H, 0.18, C.exterior, { roughness: 0.78, pos: [0, midY, -HALF_D] }));
+    scene.add(box(0.18, WALL_H, BD, C.exterior, { roughness: 0.78, pos: [-HALF_W, midY, 0] }));
+    scene.add(glassPanel(0.06, 1.1, BD - 1.5, [-HALF_W + 0.08, y + 1.5, 0], mobile));
     scene.add(box(BW, 0.12, 0.12, C.exteriorEdge, { pos: [0, y + 0.06, HALF_D] }));
     scene.add(box(0.12, 0.12, BD, C.exteriorEdge, { pos: [HALF_W, y + 0.06, 0] }));
-    // Neon cove under each ceiling edge (open sides)
     scene.add(neonStrip(BW - 0.5, 0.04, 0.04, f === 3 ? C.neonCyan : (f === 2 ? C.neonAmber : C.neonMagenta),
-      [0, y + WALL_H - 0.12, HALF_D - 0.15], 0.85));
+      [0, y + WALL_H - 0.12, HALF_D - 0.15], 1.15));
   }
-  // Exterior column accents
   for (let f = 1; f <= 3; f++) {
     const y = fy(f);
-    scene.add(box(0.28, WALL_H, 0.28, C.exteriorEdge, { pos: [-HALF_W, y + WALL_H / 2, -HALF_D] }));
-    scene.add(box(0.28, WALL_H, 0.28, C.exteriorEdge, { pos: [HALF_W, y + WALL_H / 2, -HALF_D] }));
+    scene.add(box(0.28, WALL_H, 0.28, C.exteriorEdge, { roughness: 0.55, rounded: true, radius: 0.04, pos: [-HALF_W, y + WALL_H / 2, -HALF_D] }));
+    scene.add(box(0.28, WALL_H, 0.28, C.exteriorEdge, { roughness: 0.55, rounded: true, radius: 0.04, pos: [HALF_W, y + WALL_H / 2, -HALF_D] }));
   }
 }
 
-function buildElevator(scene) {
-  // Glass shaft on far left, spanning all floors
+function buildElevator(scene, mobile) {
   const ex = -HALF_W + 1.35;
   const ez = -1.2;
   const totalH = fy(3) + WALL_H;
-  // Shaft glass walls
-  scene.add(glassPanel(0.08, totalH, 2.4, [ex - 0.85, totalH / 2, ez]));
-  scene.add(glassPanel(0.08, totalH, 2.4, [ex + 0.85, totalH / 2, ez]));
-  scene.add(glassPanel(1.7, totalH, 0.08, [ex, totalH / 2, ez - 1.15]));
-  scene.add(glassPanel(1.7, totalH, 0.08, [ex, totalH / 2, ez + 1.15]));
-  // Frame
+  scene.add(glassPanel(0.08, totalH, 2.4, [ex - 0.85, totalH / 2, ez], mobile));
+  scene.add(glassPanel(0.08, totalH, 2.4, [ex + 0.85, totalH / 2, ez], mobile));
+  scene.add(glassPanel(1.7, totalH, 0.08, [ex, totalH / 2, ez - 1.15], mobile));
+  scene.add(glassPanel(1.7, totalH, 0.08, [ex, totalH / 2, ez + 1.15], mobile));
   [[-0.85, -1.15], [0.85, -1.15], [-0.85, 1.15], [0.85, 1.15]].forEach(([dx, dz]) => {
-    scene.add(box(0.1, totalH, 0.1, 0xc8c2b6, { roughness: 0.5, pos: [ex + dx, totalH / 2, ez + dz] }));
+    scene.add(box(0.1, totalH, 0.1, 0xc8c2b6, { roughness: 0.4, metalness: 0.35, pos: [ex + dx, totalH / 2, ez + dz] }));
   });
-  // Elevator cab (animated lightly via emissive)
   const cab = box(1.3, 2.0, 1.8, 0xdfe8ea, {
-    roughness: 0.4, metalness: 0.15, opacity: 0.55,
-    emissive: C.neonCyan, emissiveIntensity: 0.15,
+    roughness: 0.25, metalness: 0.2, opacity: 0.45,
+    physical: true, clearcoat: 0.5,
+    emissive: C.neonCyan, emissiveIntensity: 0.2,
     pos: [ex, fy(2) + 1.0, ez]
   });
   cab.userData.isElevatorCab = true;
   scene.add(cab);
   scene.userData.elevatorCab = cab;
-  // Cyan neon rails
-  scene.add(neonStrip(0.05, totalH - 0.4, 0.05, C.neonCyan, [ex - 0.85, totalH / 2, ez + 1.15], 1.0));
-  scene.add(neonStrip(0.05, totalH - 0.4, 0.05, C.neonCyan, [ex + 0.85, totalH / 2, ez + 1.15], 1.0));
+  scene.add(neonStrip(0.05, totalH - 0.4, 0.05, C.neonCyan, [ex - 0.85, totalH / 2, ez + 1.15], 1.25));
+  scene.add(neonStrip(0.05, totalH - 0.4, 0.05, C.neonCyan, [ex + 0.85, totalH / 2, ez + 1.15], 1.25));
 }
 
 function buildStairs(scene) {
-  // Stairs between floors near elevator (inner left)
+  initTextures();
   const sx = -HALF_W + 3.2;
   const sz = 3.2;
   for (let f = 1; f <= 2; f++) {
@@ -306,33 +461,33 @@ function buildStairs(scene) {
     for (let i = 0; i < steps; i++) {
       const t = i / steps;
       scene.add(box(1.4, 0.12, 0.42, C.deskGrain, {
-        roughness: 0.55,
+        roughness: 0.45, rounded: true, radius: 0.02, map: WOOD_MAP,
         pos: [sx, y0 + t * FH + 0.06, sz - i * 0.38]
       }));
     }
-    // Rail
     scene.add(box(0.06, FH * 0.9, 0.06, 0xc8c2b6, {
-      pos: [sx + 0.75, y0 + FH * 0.45, sz - 1.4]
+      metalness: 0.4, roughness: 0.35, pos: [sx + 0.75, y0 + FH * 0.45, sz - 1.4]
     }));
   }
 }
 
-function buildServerRoom(scene) {
+function buildServerRoom(scene, mobile) {
   const y = fy(3);
   const cx = 5.4, cz = -3.4;
-  // Glass enclosure
-  scene.add(glassPanel(4.2, 2.4, 0.08, [cx, y + 1.2, cz - 1.6]));
-  scene.add(glassPanel(4.2, 2.4, 0.08, [cx, y + 1.2, cz + 1.6]));
-  scene.add(glassPanel(0.08, 2.4, 3.2, [cx - 2.1, y + 1.2, cz]));
-  scene.add(glassPanel(0.08, 2.4, 3.2, [cx + 2.1, y + 1.2, cz]));
-  scene.add(neonStrip(4.0, 0.04, 0.04, C.neonRed, [cx, y + 2.45, cz - 1.6], 1.2));
-  // Racks
+  scene.add(glassPanel(4.2, 2.4, 0.08, [cx, y + 1.2, cz - 1.6], mobile));
+  scene.add(glassPanel(4.2, 2.4, 0.08, [cx, y + 1.2, cz + 1.6], mobile));
+  scene.add(glassPanel(0.08, 2.4, 3.2, [cx - 2.1, y + 1.2, cz], mobile));
+  scene.add(glassPanel(0.08, 2.4, 3.2, [cx + 2.1, y + 1.2, cz], mobile));
+  scene.add(neonStrip(4.0, 0.04, 0.04, C.neonRed, [cx, y + 2.45, cz - 1.6], 1.4));
   [-0.7, 0.7].forEach((dx) => {
-    scene.add(box(0.7, 1.8, 0.55, C.server, { roughness: 0.4, metalness: 0.35, pos: [cx + dx, y + 0.95, cz] }));
+    scene.add(box(0.7, 1.8, 0.55, C.server, {
+      roughness: 0.28, metalness: 0.65, clearcoat: 0.3, physical: true, rounded: true, radius: 0.03,
+      pos: [cx + dx, y + 0.95, cz]
+    }));
     for (let i = 0; i < 5; i++) {
       const col = i % 2 === 0 ? 0x22c55e : 0x22d3ee;
       scene.add(box(0.5, 0.06, 0.04, col, {
-        emissive: col, emissiveIntensity: 1.4, castShadow: false,
+        emissive: col, emissiveIntensity: 1.8, castShadow: false,
         pos: [cx + dx, y + 0.4 + i * 0.28, cz + 0.28]
       }));
     }
@@ -341,115 +496,129 @@ function buildServerRoom(scene) {
 }
 
 function buildCafe(scene) {
+  initTextures();
   const y = fy(3);
   const cx = 5.6, cz = 2.8;
-  // Meeting table + chairs
-  scene.add(box(1.6, 0.08, 1.0, C.deskTop, { roughness: 0.48, pos: [cx, y + 0.7, cz] }));
+  scene.add(box(1.6, 0.08, 1.0, C.deskTop, {
+    roughness: 0.35, clearcoat: 0.4, physical: true, rounded: true, map: WOOD_MAP, pos: [cx, y + 0.7, cz]
+  }));
   [[-0.5, -0.55], [0.5, -0.55], [-0.5, 0.55], [0.5, 0.55]].forEach(([dx, dz]) => {
-    scene.add(box(0.35, 0.45, 0.35, C.chair, { pos: [cx + dx, y + 0.28, cz + dz] }));
+    scene.add(box(0.35, 0.45, 0.35, C.chair, {
+      roughness: 0.55, rounded: true, radius: 0.04, map: WOOD_MAP, pos: [cx + dx, y + 0.28, cz + dz]
+    }));
   });
   walnutShelf(scene, cx + 1.6, y, cz - 0.8);
   plantAt(scene, cx - 1.3, y, cz + 0.9, 0.85);
-  // Red neon CAFE sign
-  scene.add(neonStrip(1.8, 0.12, 0.06, C.neonRed, [cx, y + 2.35, cz - 1.5], 1.6));
+  scene.add(neonStrip(1.8, 0.12, 0.06, C.neonRed, [cx, y + 2.35, cz - 1.5], 1.8));
   scene.add(cssLabel("CAFE", "room-badge neon-red", [cx, y + 2.55, cz - 1.5]));
-  // Soft neon wall wash
-  const pl = new THREE.PointLight(C.neonRed, 0.55, 8, 2);
+  const pl = new THREE.PointLight(C.neonRed, 0.7, 9, 2);
   pl.position.set(cx, y + 2.2, cz);
   scene.add(pl);
 }
 
 function buildKitchen(scene) {
+  initTextures();
   const y = fy(2);
   const cx = 5.5, cz = -3.6;
-  // Counter
-  scene.add(box(3.4, 0.9, 0.7, C.deskTop, { roughness: 0.5, pos: [cx, y + 0.45, cz] }));
-  scene.add(box(3.2, 0.03, 0.55, C.deskGrain, { castShadow: false, pos: [cx, y + 0.92, cz] }));
-  // Sink
-  scene.add(box(0.45, 0.08, 0.35, 0xc5cdd2, { metalness: 0.4, roughness: 0.35, pos: [cx - 0.9, y + 0.96, cz] }));
-  // Coffee machine
-  scene.add(box(0.4, 0.55, 0.35, C.desk, { pos: [cx + 0.2, y + 1.2, cz] }));
-  scene.add(box(0.28, 0.12, 0.2, C.neonAmber, {
-    emissive: C.neonAmber, emissiveIntensity: 0.5, castShadow: false, pos: [cx + 0.2, y + 1.45, cz + 0.05]
+  scene.add(box(3.4, 0.9, 0.7, C.deskTop, {
+    roughness: 0.42, clearcoat: 0.25, physical: true, rounded: true, map: WOOD_MAP, pos: [cx, y + 0.45, cz]
   }));
-  // Fridge
-  scene.add(box(0.85, 1.7, 0.7, C.fridge, { roughness: 0.45, metalness: 0.25, pos: [cx + 1.55, y + 0.9, cz + 0.1] }));
-  scene.add(neonStrip(2.8, 0.04, 0.04, C.neonAmber, [cx, y + 1.55, cz - 0.4], 1.1));
+  scene.add(box(3.2, 0.03, 0.55, C.deskGrain, { castShadow: false, map: WOOD_MAP, pos: [cx, y + 0.92, cz] }));
+  scene.add(box(0.45, 0.08, 0.35, 0xc5cdd2, {
+    metalness: 0.55, roughness: 0.25, clearcoat: 0.5, physical: true, pos: [cx - 0.9, y + 0.96, cz]
+  }));
+  scene.add(box(0.4, 0.55, 0.35, C.desk, { roughness: 0.4, rounded: true, pos: [cx + 0.2, y + 1.2, cz] }));
+  scene.add(box(0.28, 0.12, 0.2, C.neonAmber, {
+    emissive: C.neonAmber, emissiveIntensity: 0.7, castShadow: false, pos: [cx + 0.2, y + 1.45, cz + 0.05]
+  }));
+  scene.add(box(0.85, 1.7, 0.7, C.fridge, {
+    roughness: 0.28, metalness: 0.45, clearcoat: 0.55, physical: true, rounded: true, radius: 0.04,
+    pos: [cx + 1.55, y + 0.9, cz + 0.1]
+  }));
+  scene.add(neonStrip(2.8, 0.04, 0.04, C.neonAmber, [cx, y + 1.55, cz - 0.4], 1.3));
   scene.add(cssLabel("KITCHEN", "room-badge", [cx, y + 2.5, cz]));
-  const pl = new THREE.PointLight(C.neonAmber, 0.4, 7, 2);
+  const pl = new THREE.PointLight(C.neonAmber, 0.55, 8, 2);
   pl.position.set(cx, y + 2.0, cz);
   scene.add(pl);
 }
 
 function buildLounge(scene, floor, x, z) {
   const y = fy(floor);
-  scene.add(box(2.0, 0.45, 0.85, C.sofa, { roughness: 0.7, pos: [x, y + 0.28, z] }));
-  scene.add(box(2.0, 0.55, 0.18, C.sofa, { roughness: 0.7, pos: [x, y + 0.55, z - 0.35] }));
-  scene.add(box(0.7, 0.08, 0.5, C.deskTop, { pos: [x, y + 0.35, z + 0.85] }));
+  scene.add(box(2.0, 0.45, 0.85, C.sofa, { roughness: 0.72, rounded: true, radius: 0.06, pos: [x, y + 0.28, z] }));
+  scene.add(box(2.0, 0.55, 0.18, C.sofa, { roughness: 0.72, rounded: true, radius: 0.05, pos: [x, y + 0.55, z - 0.35] }));
+  scene.add(box(0.7, 0.08, 0.5, C.deskTop, {
+    roughness: 0.4, clearcoat: 0.3, physical: true, rounded: true, map: WOOD_MAP, pos: [x, y + 0.35, z + 0.85]
+  }));
   plantAt(scene, x + 1.3, y, z + 0.2, 0.8);
 }
 
 function buildReception(scene) {
+  initTextures();
   const y = fy(1);
-  // Long reception desk with red accent stripe
-  scene.add(box(3.6, 0.95, 0.85, 0xf5f0e8, { roughness: 0.55, pos: [0.3, y + 0.48, 2.4] }));
+  scene.add(box(3.6, 0.95, 0.85, 0xf5f0e8, {
+    roughness: 0.45, clearcoat: 0.2, physical: true, rounded: true, radius: 0.05, pos: [0.3, y + 0.48, 2.4]
+  }));
   scene.add(box(3.5, 0.08, 0.08, C.receptionStripe, {
-    emissive: C.receptionStripe, emissiveIntensity: 0.45, castShadow: false,
+    emissive: C.receptionStripe, emissiveIntensity: 0.55, castShadow: false,
     pos: [0.3, y + 0.85, 2.8]
   }));
-  scene.add(box(3.4, 0.06, 0.7, C.deskTop, { pos: [0.3, y + 0.98, 2.4] }));
-  // Waiting lounge
+  scene.add(box(3.4, 0.06, 0.7, C.deskTop, {
+    roughness: 0.38, clearcoat: 0.35, physical: true, map: WOOD_MAP, pos: [0.3, y + 0.98, 2.4]
+  }));
   buildLounge(scene, 1, -4.2, 3.2);
-  scene.add(box(0.7, 0.55, 0.7, C.sofa, { pos: [-2.6, y + 0.3, 3.6] }));
+  scene.add(box(0.7, 0.55, 0.7, C.sofa, { roughness: 0.7, rounded: true, pos: [-2.6, y + 0.3, 3.6] }));
   plantAt(scene, -5.4, y, 3.8, 1.0);
 }
 
-function buildConference(scene) {
+function buildConference(scene, mobile) {
+  initTextures();
   const y = fy(1);
   const cx = 5.2, cz = -2.8;
-  scene.add(glassPanel(4.0, 2.5, 0.08, [cx, y + 1.25, cz - 1.7]));
-  scene.add(glassPanel(4.0, 2.5, 0.08, [cx, y + 1.25, cz + 1.7]));
-  scene.add(glassPanel(0.08, 2.5, 3.4, [cx - 2.0, y + 1.25, cz]));
-  scene.add(glassPanel(0.08, 2.5, 3.4, [cx + 2.0, y + 1.25, cz]));
-  scene.add(box(2.4, 0.08, 1.1, C.deskTop, { roughness: 0.48, pos: [cx, y + 0.72, cz] }));
+  scene.add(glassPanel(4.0, 2.5, 0.08, [cx, y + 1.25, cz - 1.7], mobile));
+  scene.add(glassPanel(4.0, 2.5, 0.08, [cx, y + 1.25, cz + 1.7], mobile));
+  scene.add(glassPanel(0.08, 2.5, 3.4, [cx - 2.0, y + 1.25, cz], mobile));
+  scene.add(glassPanel(0.08, 2.5, 3.4, [cx + 2.0, y + 1.25, cz], mobile));
+  scene.add(box(2.4, 0.08, 1.1, C.deskTop, {
+    roughness: 0.35, clearcoat: 0.45, physical: true, rounded: true, map: WOOD_MAP, pos: [cx, y + 0.72, cz]
+  }));
   [[-0.8, -0.7], [0.8, -0.7], [-0.8, 0.7], [0.8, 0.7]].forEach(([dx, dz]) => {
-    scene.add(box(0.4, 0.5, 0.4, C.chair, { pos: [cx + dx, y + 0.3, cz + dz] }));
+    scene.add(box(0.4, 0.5, 0.4, C.chair, {
+      roughness: 0.55, rounded: true, map: WOOD_MAP, pos: [cx + dx, y + 0.3, cz + dz]
+    }));
   });
-  scene.add(neonStrip(3.6, 0.04, 0.04, C.neonCyan, [cx, y + 2.55, cz - 1.7], 0.9));
+  scene.add(neonStrip(3.6, 0.04, 0.04, C.neonCyan, [cx, y + 2.55, cz - 1.7], 1.1));
   scene.add(cssLabel("CONFERENCE", "room-badge", [cx, y + 2.75, cz]));
 }
 
-function buildBuilding(scene) {
+function buildBuilding(scene, mobile) {
   buildExterior(scene);
   for (let f = 1; f <= 3; f++) buildSlab(scene, f);
-  buildShellWalls(scene);
-  buildElevator(scene);
+  buildShellWalls(scene, mobile);
+  buildElevator(scene, mobile);
   buildStairs(scene);
   buildReception(scene);
-  buildConference(scene);
+  buildConference(scene, mobile);
   buildKitchen(scene);
   buildLounge(scene, 2, 5.2, 2.6);
-  buildServerRoom(scene);
+  buildServerRoom(scene, mobile);
   buildCafe(scene);
 
   addFloorBadge(scene, 3, "Engineering");
   addFloorBadge(scene, 2, "Markets");
   addFloorBadge(scene, 1, "Reception");
 
-  // Soft neon points
   [
-    { c: C.neonCyan, p: [0, fy(3) + 2.5, 0], i: 0.35 },
-    { c: C.neonAmber, p: [5, fy(2) + 2.2, -3], i: 0.4 },
-    { c: C.neonMagenta, p: [-2, fy(1) + 2.2, 0], i: 0.28 },
-    { c: C.neonRed, p: [5.5, fy(3) + 2.3, 2.5], i: 0.35 }
+    { c: C.neonCyan, p: [0, fy(3) + 2.5, 0], i: 0.45 },
+    { c: C.neonAmber, p: [5, fy(2) + 2.2, -3], i: 0.5 },
+    { c: C.neonMagenta, p: [-2, fy(1) + 2.2, 0], i: 0.35 },
+    { c: C.neonRed, p: [5.5, fy(3) + 2.3, 2.5], i: 0.45 }
   ].forEach(({ c, p, i }) => {
-    const pl = new THREE.PointLight(c, i, 12, 2);
+    const pl = new THREE.PointLight(c, i, 14, 2);
     pl.position.set(...p);
     scene.add(pl);
   });
 }
 
-/* Waypoints — world space */
 function wp(floor, x, z) {
   return new THREE.Vector3(x, fy(floor), z);
 }
@@ -482,6 +651,15 @@ function setGlow(avatar, status) {
   g.material.emissiveIntensity = intensity;
 }
 
+function nearestFloor(y) {
+  let best = 1, bestD = Infinity;
+  for (const f of [1, 2, 3]) {
+    const d = Math.abs(y - fy(f));
+    if (d < bestD) { bestD = d; best = f; }
+  }
+  return best;
+}
+
 function pathViaElevator(from, toFloor, dest) {
   const fromFloor = nearestFloor(from.y);
   const path = [from.clone()];
@@ -494,19 +672,9 @@ function pathViaElevator(from, toFloor, dest) {
   return path;
 }
 
-function nearestFloor(y) {
-  let best = 1, bestD = Infinity;
-  for (const f of [1, 2, 3]) {
-    const d = Math.abs(y - fy(f));
-    if (d < bestD) { bestD = d; best = f; }
-  }
-  return best;
-}
-
 function pickWanderTarget(selfId, avatars, deskStatus) {
   const self = AGENTS.find(a => a.id === selfId);
   const roll = Math.random();
-  // Busy / working → bias toward coffee (kitchen / cafe)
   const busy = deskStatus === "working" || deskStatus === "active" || deskStatus === "alert";
   if (busy && roll < 0.55) {
     const dest = self.floor === 3 ? WAYPOINTS.cafe.clone() : WAYPOINTS.kitchen.clone();
@@ -527,7 +695,6 @@ function pickWanderTarget(selfId, avatars, deskStatus) {
   if (roll < 0.52 && self.floor === 1) {
     return { type: "pantry", pos: WAYPOINTS.conference.clone(), destFloor: 1, label: "away · conference" };
   }
-  // Chat with another bot
   const others = AGENTS.filter(a => a.id !== selfId);
   const partner = others[Math.floor(Math.random() * others.length)];
   const meetFloor = partner.floor;
@@ -549,6 +716,7 @@ function pickWanderTarget(selfId, avatars, deskStatus) {
 
 export function createOffice3D({ canvas, container, onSelect, getStatus, onChat }) {
   const host = container || canvas.parentElement;
+  initTextures();
 
   function measure() {
     const w = Math.max(1, Math.floor(host.clientWidth || canvas.clientWidth || window.innerWidth || 1));
@@ -565,24 +733,32 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
   try {
     renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: !mobile,
+      antialias: true,
       alpha: false,
       powerPreference: mobile ? "low-power" : "high-performance",
-      failIfMajorPerformanceCaveat: false
+      failIfMajorPerformanceCaveat: false,
+      stencil: false,
+      depth: true
     });
   } catch (err) {
     throw err;
   }
 
   const { w: iw, h: ih } = measure();
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobile ? 1.5 : 2));
+  const maxPR = mobile ? 1.5 : 2;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPR));
   renderer.setSize(iw, ih, false);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.12;
+  renderer.toneMappingExposure = 1.05;
   renderer.setClearColor(C.void, 1);
+  if (renderer.capabilities.getMaxAnisotropy) {
+    const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    if (WOOD_MAP) WOOD_MAP.anisotropy = aniso;
+    if (FLOOR_MAP) FLOOR_MAP.anisotropy = aniso;
+  }
 
   const labelRenderer = new CSS2DRenderer();
   labelRenderer.setSize(iw, ih);
@@ -594,10 +770,17 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(C.void);
-  scene.fog = new THREE.Fog(0xf3eee4, 45, 85);
+  scene.fog = new THREE.Fog(0xf3eee4, 52, 95);
+
+  // PMREM studio environment for glass / wood reflections
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const envScene = new RoomEnvironment();
+  const envTex = pmrem.fromScene(envScene, 0.04).texture;
+  scene.environment = envTex;
+  scene.environmentIntensity = mobile ? 0.55 : 0.85;
+  envScene.dispose?.();
 
   const camera = new THREE.PerspectiveCamera(36, iw / ih, 0.1, 160);
-  // Near-isometric default framing of whole building
   if (mobile) camera.position.set(20, 18, 22);
   else camera.position.set(24, 20, 26);
 
@@ -613,13 +796,13 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
   controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
   controls.update();
 
-  scene.add(new THREE.AmbientLight(C.ambient, 0.92));
-  const hemi = new THREE.HemisphereLight(0xfff8ef, 0xd9c4a1, 0.5);
+  scene.add(new THREE.AmbientLight(C.ambient, 0.55));
+  const hemi = new THREE.HemisphereLight(0xfff8ef, 0xd9c4a1, 0.55);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(C.sun, 1.2);
+  const sun = new THREE.DirectionalLight(C.sun, 1.45);
   sun.position.set(14, 28, 12);
   sun.castShadow = true;
-  const shadowSize = mobile ? 512 : 1024;
+  const shadowSize = mobile ? 1024 : 2048;
   sun.shadow.mapSize.set(shadowSize, shadowSize);
   sun.shadow.camera.near = 2;
   sun.shadow.camera.far = 70;
@@ -627,18 +810,19 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
   sun.shadow.camera.right = 28;
   sun.shadow.camera.top = 28;
   sun.shadow.camera.bottom = -28;
-  sun.shadow.bias = -0.0002;
+  sun.shadow.bias = -0.00015;
+  sun.shadow.normalBias = 0.02;
+  sun.shadow.radius = mobile ? 2 : 4;
   scene.add(sun);
-  const fill = new THREE.DirectionalLight(0xe8f0f4, 0.35);
+  const fill = new THREE.DirectionalLight(0xe8f0f4, 0.4);
   fill.position.set(-12, 14, -6);
   scene.add(fill);
-  const warm = new THREE.DirectionalLight(0xffe0c2, 0.25);
+  const warm = new THREE.DirectionalLight(0xffe0c2, 0.32);
   warm.position.set(6, 10, -8);
   scene.add(warm);
 
-  buildBuilding(scene);
+  buildBuilding(scene, mobile);
   AGENTS.forEach(a => {
-    const [x, y, z] = deskSitOffset(a);
     walnutDeskAt(scene, a.pos[0], fy(a.floor), a.pos[2]);
   });
 
@@ -665,6 +849,146 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
     });
   });
 
+  // Post stack — bloom + SMAA (ray-traced look without path tracer)
+  const composer = new EffectComposer(renderer);
+  const renderPass = new RenderPass(scene, camera);
+  composer.addPass(renderPass);
+  const bloom = new UnrealBloomPass(
+    new THREE.Vector2(iw, ih),
+    mobile ? 0.22 : 0.38,
+    0.55,
+    0.72
+  );
+  composer.addPass(bloom);
+  const smaa = new SMAAPass(iw * renderer.getPixelRatio(), ih * renderer.getPixelRatio());
+  composer.addPass(smaa);
+  const outputPass = new OutputPass();
+  composer.addPass(outputPass);
+
+  // Optional path tracer (desktop)
+  let pathTracer = null;
+  let pathTracerReady = false;
+  let pathTraceEnabled = false;
+  let pathTraceLoading = false;
+  let pathTraceError = null;
+  let freezeMotion = false;
+  let samplesCap = 96;
+  let lastCamKey = "";
+  const rtListeners = new Set();
+
+  function notifyRt() {
+    const info = getRayTraceInfo();
+    rtListeners.forEach(fn => {
+      try { fn(info); } catch {}
+    });
+  }
+
+  function camKey() {
+    return [
+      camera.position.x.toFixed(3), camera.position.y.toFixed(3), camera.position.z.toFixed(3),
+      controls.target.x.toFixed(3), controls.target.y.toFixed(3), controls.target.z.toFixed(3)
+    ].join("|");
+  }
+
+  async function ensurePathTracer() {
+    if (pathTracerReady && pathTracer) return pathTracer;
+    if (pathTraceLoading) {
+      while (pathTraceLoading) await new Promise(r => setTimeout(r, 50));
+      if (pathTracerReady) return pathTracer;
+      throw pathTraceError || new Error("Path tracer failed");
+    }
+    pathTraceLoading = true;
+    pathTraceError = null;
+    notifyRt();
+    try {
+      const mod = await import("three-gpu-pathtracer");
+      const { WebGLPathTracer } = mod;
+      pathTracer = new WebGLPathTracer(renderer);
+      pathTracer.bounces = 6;
+      pathTracer.transmissiveBounces = 4;
+      pathTracer.filterGlossyFactor = 0.5;
+      pathTracer.renderDelay = 40;
+      pathTracer.minSamples = 1;
+      pathTracer.fadeDuration = 200;
+      pathTracer.rasterizeScene = true;
+      pathTracer.renderToCanvas = true;
+      pathTracer.dynamicLowRes = true;
+      pathTracer.lowResScale = 0.35;
+      pathTracer.tiles.set(mobile ? 2 : 3, mobile ? 2 : 3);
+      await pathTracer.setSceneAsync(scene, camera);
+      pathTracerReady = true;
+      lastCamKey = camKey();
+      return pathTracer;
+    } catch (err) {
+      pathTraceError = err;
+      pathTracer = null;
+      pathTracerReady = false;
+      console.warn("Path tracer unavailable", err);
+      throw err;
+    } finally {
+      pathTraceLoading = false;
+      notifyRt();
+    }
+  }
+
+  function getRayTraceInfo() {
+    return {
+      enabled: pathTraceEnabled,
+      supported: !mobile,
+      loading: pathTraceLoading,
+      ready: pathTracerReady,
+      error: pathTraceError ? String(pathTraceError.message || pathTraceError) : null,
+      samples: pathTracer?.samples ?? 0,
+      mode: pathTraceEnabled ? (pathTracerReady ? "pathtrace" : "loading") : "pbr"
+    };
+  }
+
+  async function setRayTrace(on) {
+    if (on && mobile) {
+      pathTraceError = new Error("Ray Trace is desktop-only on this device");
+      pathTraceEnabled = false;
+      freezeMotion = false;
+      notifyRt();
+      return getRayTraceInfo();
+    }
+    if (!on) {
+      pathTraceEnabled = false;
+      freezeMotion = false;
+      renderer.toneMappingExposure = 1.05;
+      notifyRt();
+      return getRayTraceInfo();
+    }
+    pathTraceEnabled = true;
+    freezeMotion = true;
+    notifyRt();
+    try {
+      await ensurePathTracer();
+      pathTracer.updateCamera();
+      pathTracer.reset();
+      lastCamKey = camKey();
+    } catch (err) {
+      pathTraceEnabled = false;
+      freezeMotion = false;
+      // Soft fallback: boost bloom / env as "HQ glow" so toggle still feels better
+      bloom.strength = 0.55;
+      scene.environmentIntensity = 1.1;
+      renderer.toneMappingExposure = 1.12;
+      pathTraceError = err;
+    }
+    notifyRt();
+    return getRayTraceInfo();
+  }
+
+  controls.addEventListener("change", () => {
+    if (pathTraceEnabled && pathTracerReady && pathTracer) {
+      const k = camKey();
+      if (k !== lastCamKey) {
+        lastCamKey = k;
+        pathTracer.updateCamera();
+      }
+    }
+  });
+
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
 
@@ -674,6 +998,12 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
     camera.updateProjectionMatrix();
     renderer.setSize(w, h, false);
     labelRenderer.setSize(w, h);
+    composer.setSize(w, h);
+    bloom.setSize(w, h);
+    smaa.setSize(w * renderer.getPixelRatio(), h * renderer.getPixelRatio());
+    if (pathTracerReady && pathTracer) {
+      try { pathTracer.updateCamera(); } catch {}
+    }
   }
 
   let ro = null;
@@ -789,6 +1119,7 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
   }
 
   function startWander(id, now) {
+    if (freezeMotion) return;
     const state = ai.get(id);
     const av = avatars.get(id);
     let away = 0;
@@ -879,6 +1210,7 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
   }
 
   function stepAI(dt, now) {
+    if (freezeMotion) return;
     avatars.forEach((av, id) => {
       const state = ai.get(id);
       if (state.mode === "desk" && now >= state.nextWanderAt) startWander(id, now);
@@ -956,9 +1288,8 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
     last = now;
     stepAI(dt, now);
     updateStatusVisuals();
-    // Elevator cab bob between floors
     const cab = scene.userData.elevatorCab;
-    if (cab) {
+    if (cab && !freezeMotion) {
       const t = (Math.sin(now * 0.00035) + 1) / 2;
       cab.position.y = fy(1) + 1.0 + t * (fy(3) - fy(1));
     }
@@ -969,7 +1300,15 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
       }
     });
     controls.update();
-    renderer.render(scene, camera);
+
+    if (pathTraceEnabled && pathTracerReady && pathTracer) {
+      if ((pathTracer.samples || 0) < samplesCap) {
+        pathTracer.renderSample();
+      }
+      if (now % 500 < 20) notifyRt();
+    } else {
+      composer.render();
+    }
     labelRenderer.render(scene, camera);
   }
   requestAnimationFrame(frame);
@@ -983,13 +1322,26 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
         resize();
         requestAnimationFrame(() => requestAnimationFrame(resize));
         last = performance.now();
+        if (pathTraceEnabled && pathTracerReady && pathTracer) {
+          try { pathTracer.updateCamera(); pathTracer.reset(); } catch {}
+        }
       }
     },
+    setRayTrace,
+    getRayTraceInfo,
+    onRayTraceChange(fn) {
+      rtListeners.add(fn);
+      return () => rtListeners.delete(fn);
+    },
+    isMobile: mobile,
     dispose() {
       running = false;
       if (ro) ro.disconnect();
       ai.forEach(s => clearBubbleTimer(s));
       labelRenderer.domElement.remove();
+      composer.dispose();
+      envTex.dispose?.();
+      pmrem.dispose();
       renderer.dispose();
     }
   };

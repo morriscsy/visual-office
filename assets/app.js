@@ -375,6 +375,61 @@ function init() {
     office3d = null;
   }
 
+  const btnRt = document.getElementById("btn-rt");
+  const rtMeta = document.getElementById("rt-meta");
+  function syncRtUi(info) {
+    if (!btnRt) return;
+    const i = info || office3d?.getRayTraceInfo?.() || { enabled: false, mode: "pbr", supported: true };
+    btnRt.setAttribute("aria-pressed", i.enabled ? "true" : "false");
+    btnRt.classList.toggle("loading", !!i.loading);
+    btnRt.classList.toggle("error", !!i.error && !i.enabled);
+    if (!i.supported) {
+      btnRt.disabled = true;
+      btnRt.title = "Mobile uses HQ PBR + bloom (path tracer is desktop-only)";
+      if (rtMeta) rtMeta.textContent = "PBR";
+      return;
+    }
+    btnRt.disabled = !!i.loading;
+    if (i.loading) {
+      if (rtMeta) rtMeta.textContent = "…";
+    } else if (i.enabled && i.ready) {
+      const n = Math.round(i.samples || 0);
+      if (rtMeta) rtMeta.textContent = n > 0 ? `${n}spp` : "RT";
+    } else if (i.error && !i.enabled) {
+      if (rtMeta) rtMeta.textContent = "HQ";
+    } else {
+      if (rtMeta) rtMeta.textContent = "PBR";
+    }
+  }
+  if (btnRt) {
+    if (office3d?.isMobile) {
+      btnRt.disabled = true;
+      btnRt.title = "Mobile uses HQ PBR + bloom (path tracer is desktop-only)";
+      if (rtMeta) rtMeta.textContent = "PBR";
+    }
+    office3d?.onRayTraceChange?.(syncRtUi);
+    syncRtUi(office3d?.getRayTraceInfo?.());
+    btnRt.addEventListener("click", async () => {
+      if (!office3d?.setRayTrace) return;
+      const cur = office3d.getRayTraceInfo?.() || {};
+      const next = !cur.enabled;
+      btnRt.classList.add("loading");
+      if (rtMeta) rtMeta.textContent = "…";
+      try {
+        const info = await office3d.setRayTrace(next);
+        syncRtUi(info);
+        if (info.enabled && info.ready) toast("光線追蹤 ON · progressive samples");
+        else if (info.enabled && info.loading) toast("Loading path tracer…");
+        else if (!info.enabled && info.error) toast("Path tracer unavailable · HQ PBR boosted");
+        else toast("光線追蹤 OFF · HQ PBR");
+      } catch (err) {
+        console.warn(err);
+        syncRtUi(office3d.getRayTraceInfo?.());
+        toast("Ray Trace failed · staying on PBR");
+      }
+    });
+  }
+
   let saved = "3d";
   try { saved = localStorage.getItem(LS_VIEW) || "3d"; } catch {}
   setMode(saved === "dash" ? "dash" : "3d");
