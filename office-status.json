@@ -1,0 +1,147 @@
+{
+  "updatedAt": "2026-10-26T18:20:33+08:00",
+  "killSwitch": "inactive",
+  "paper": {
+    "balance": 10000,
+    "pnlPct": 0,
+    "currency": "USD",
+    "label": "模擬 / PAPER"
+  },
+  "tickers": [
+    {
+      "sym": "ES",
+      "px": 7665.75,
+      "chg": 0.08,
+      "note": "Asia open"
+    },
+    {
+      "sym": "NQ",
+      "px": 29144,
+      "chg": 0.09,
+      "note": "gap faded"
+    },
+    {
+      "sym": "WTI",
+      "px": 100.97,
+      "chg": -2.23,
+      "note": "under 101"
+    }
+  ],
+  "tickerAsOf": "2026-10-26 ~08:06–11:36 HKT · not live",
+  "desks": [
+    {
+      "id": "masterki",
+      "agentId": "fe9d86ab-8678-4911-bab0-924452347903",
+      "status": "active",
+      "last": "Kill switch LIFTED · specialists cleared",
+      "at": "2026-10-26T00:04:00+08:00"
+    },
+    {
+      "id": "econpulse",
+      "agentId": "8492cbad-dfe1-4269-adf8-399482e75e36",
+      "status": "idle",
+      "last": "Freeze-gap backfill done · fd18f58",
+      "at": "2026-10-26T00:20:00+08:00"
+    },
+    {
+      "id": "marketwatch",
+      "agentId": "30824dae-d27a-4d01-a183-8e7cc1ac5faf",
+      "status": "alert",
+      "last": "WTI 100.97 (−2.23%) under 101",
+      "at": "2026-10-26T11:36:00+08:00"
+    },
+    {
+      "id": "stratlab",
+      "agentId": "bf845b56-5262-4dd4-9e8d-0a25c30ece60",
+      "status": "idle",
+      "last": "Strategies on standby",
+      "at": "2026-10-26T00:04:00+08:00"
+    },
+    {
+      "id": "workfolio",
+      "agentId": "8a4f7c29-bbce-428b-bdb1-2716d86faac5",
+      "status": "idle",
+      "last": "Vault quiet",
+      "at": "2026-10-26T00:04:00+08:00"
+    },
+    {
+      "id": "patternlab",
+      "agentId": "f38c2c75-5a51-4c96-a48c-7d4caaf06346",
+      "status": "idle",
+      "last": "iH&S standby",
+      "at": "2026-10-26T00:04:00+08:00"
+    },
+    {
+      "id": "patternsight",
+      "agentId": "4c10c83d-3503-40c7-b026-7cf6909dc126",
+      "status": "idle",
+      "last": "Candle shapes standby",
+      "at": "2026-10-26T00:04:00+08:00"
+    },
+    {
+      "id": "pinbarlab",
+      "agentId": "60df8477-cce2-4ec4-aefa-cc80f2195ed2",
+      "status": "idle",
+      "last": "Pinbar standby",
+      "at": "2026-10-26T00:04:00+08:00"
+    },
+    {
+      "id": "shoulderlab",
+      "agentId": "1defe5ca-d4e3-4a9b-a369-6124e497868f",
+      "status": "idle",
+      "last": "H&S standby",
+      "at": "2026-10-26T00:04:00+08:00"
+    },
+    {
+      "id": "laoyulab",
+      "agentId": "4bf8abe0-9636-4e34-bee9-f625802c1e70",
+      "status": "idle",
+      "last": "破底翻 / 互換 standby",
+      "at": "2026-10-26T00:04:00+08:00"
+    },
+    {
+      "id": "plaudlab",
+      "agentId": "c47b2949-b2ac-4a4f-8c5e-d4ba4a57076e",
+      "status": "idle",
+      "last": "Plaud notes ready",
+      "at": "2026-10-26T00:04:00+08:00"
+    }
+  ],
+  "feed": [
+    {
+      "from": "MarketWatch",
+      "zone": "交易監控部",
+      "text": "ALERT · WTI 100.97 (−2.23% vs Fri 103.27) under $101 · Brent 109.47 (−2.00%) · Sunday Globex fade after Fri spike",
+      "at": "2026-10-26T11:36:00+08:00",
+      "level": "alert"
+    },
+    {
+      "from": "MarketWatch",
+      "zone": "交易監控部",
+      "text": "ALERT · NQ 29284.5 (+0.57% vs Fri Globex) · reclaimed ±0.5% after fade under",
+      "at": "2026-10-26T06:11:00+08:00",
+      "level": "alert"
+    },
+    {
+      "from": "MarketWatch",
+      "zone": "交易監控部",
+      "text": "Asia open quiet · ES +0.08% · NQ +0.09% · Sunday NQ gap fully faded · no alerts",
+      "at": "2026-10-26T08:06:00+08:00",
+      "level": "info"
+    },
+    {
+      "from": "EconPulse",
+      "zone": "宏觀研究部",
+      "text": "Freeze-gap backfill DONE · UK PMI flash Comp/Svcs 53.1 · Mfg 52.8 · UMich Oct final CSI 48.0 · commit fd18f58",
+      "at": "2026-10-26T00:20:00+08:00",
+      "level": "ok"
+    },
+    {
+      "from": "MasterKi",
+      "zone": "會議室",
+      "text": "Kill switch LIFTED ~00:04 HKT · Actuals routines re-enabled · specialists cleared to work",
+      "at": "2026-10-26T00:04:00+08:00",
+      "level": "ok"
+    }
+  ]
+}
