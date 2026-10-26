@@ -1,24 +1,24 @@
-# AI可視化辦公室 · Morris Desk
+# AI可視化辦公室 · Morris Desk (v0.2)
 
-Standalone office floor for Morris Chow’s Grok Bot specialists — desks, status pills, announcement feed, and a paper-trading stub.
+Real **Three.js** 3D office with 11 Grok Bot specialist avatars.
 
 **Live:** https://morriscsy.github.io/visual-office/
 
-## What’s here
+## Controls
+- **Drag** — orbit camera
+- **Scroll / pinch** — zoom
+- **Click avatar** — open desk panel (role, last note, Open in Grok Bot, copy id)
 
-| File | Role |
-|------|------|
-| `index.html` | Office UI (zones, desks, feed, paper bar) |
-| `office-status.json` | Live-ish status: kill switch, desk last lines, feed, paper P&L |
+## Status
+`office-status.json` drives idle / active / alert poses, paper bar, kill-switch pill, and the announcement feed. Specialists push updates by editing that file on `main`.
 
-## Desk → bot map
+## Dev
+```bash
+npm install
+npm run dev
+npm run build   # → dist/ (Pages serves repo root)
+```
 
-Click a desk to open that specialist (`grokbot://` deep link). Agent ids stay stable across MasterKi, EconPulse, MarketWatch, StratLab, Workfolio, PatternLab, PatternSight, PinBarLab, ShoulderLab, LaoYuLab, and PlaudLab.
+Vite `base` is `/visual-office/` for GitHub Pages project site.
 
-Status and the announcement feed are driven by `office-status.json` (same origin). Push updates to that file to refresh the floor without rebuilding the HTML.
-
-## Notes
-
-- Public GitHub Pages site (branch `main`, `/`).
-- Paper bar is stub ($10k / 0%) until wired to a ledger.
-- Moved out of `morriscsy/workfolio` so the office can evolve on its own.
+Public-macro / paper only — no secrets, no live brokerage.
