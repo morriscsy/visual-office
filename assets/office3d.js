@@ -11,42 +11,43 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { AGENTS, statusLabel, FLOOR_Y, deskSitOffset } from "./agents.js";
 import { pickTopic, buildDialogue, buildPantryAside } from "./topics.js";
 
-/* v0.6 — HQ PBR + bloom "ray-traced look" + optional WebGL path tracer */
+/* v0.7 — Claymation / plasticine cutaway office (Magnific clay-animation look) */
 
 const C = {
-  exterior: 0xe8dfd0,
-  exteriorEdge: 0xd4c7b0,
-  floor: 0xf0e8da,
-  floorEdge: 0xd9cbb5,
-  wall: 0xf7f4ed,
-  wallAccent: 0xe8efe9,
-  slab: 0xe5ddd0,
-  desk: 0x5c4033,
-  deskTop: 0x6b4423,
-  deskGrain: 0x8a6239,
-  deskLeg: 0x4a3224,
-  chair: 0x6b5344,
-  chairBack: 0x5a4436,
-  shelf: 0x5c4033,
-  monitor: 0xdfe6e2,
-  screen: 0x8bb8c9,
-  plantPot: 0x6b4423,
-  plant: 0x5f7d4a,
-  tree: 0x3d6b45,
-  road: 0x9a9a9a,
-  roadLine: 0xf5f5f5,
-  glass: 0xb8d4dc,
-  ambient: 0xfff6ea,
-  sun: 0xfff2d6,
-  void: 0xf3eee4,
-  neonCyan: 0x22d3ee,
-  neonMagenta: 0xe879f9,
-  neonAmber: 0xfbbf24,
-  neonRed: 0xef4444,
-  server: 0x2a2f36,
-  fridge: 0xd0d5da,
-  sofa: 0xb8bdc4,
-  receptionStripe: 0xd45a5a
+  exterior: 0xf2c9a0,
+  exteriorEdge: 0xe8b080,
+  wall: 0xf6d4b0,
+  wallInner: 0xf8dcc0,
+  floor: 0xe8e4ef,
+  floorEdge: 0xd4c8b0,
+  slab: 0xefc9a5,
+  desk: 0xe8c9a0,
+  deskSide: 0xe09060,
+  deskTop: 0xf0d5b0,
+  chair: 0xb8c8d4,
+  chairWood: 0xc4a070,
+  shelf: 0xe2c090,
+  monitor: 0xf2eee6,
+  screen: 0x7eb8b0,
+  plantPot: 0xc4785a,
+  plant: 0x7a9e6e,
+  tree: 0x5f8a58,
+  glass: 0xf0e0d0,
+  ambient: 0xfff0e0,
+  sun: 0xffe8c8,
+  void: 0xf5e6d4,
+  softGlow: 0xffd9a8,
+  warmLamp: 0xffc878,
+  cafeSign: 0xe87860,
+  server: 0xd8c8b8,
+  fridge: 0xf0ebe4,
+  sofa: 0xd4c0b0,
+  receptionStripe: 0xe87860,
+  claySkin: 0xf0c8a8,
+  bookA: 0xe87860,
+  bookB: 0x7eb8b0,
+  bookC: 0xe8c050,
+  bookD: 0x8bb88a
 };
 
 const FH = 3.55;
@@ -58,8 +59,7 @@ const HALF_D = BD / 2;
 
 function fy(floor) { return FLOOR_Y[floor] ?? 0; }
 
-let WOOD_MAP = null;
-let WOOD_ROUGH = null;
+let CLAY_MAP = null;
 let FLOOR_MAP = null;
 
 function makeNoiseCanvas(size, paint) {
@@ -71,141 +71,81 @@ function makeNoiseCanvas(size, paint) {
 }
 
 function initTextures() {
-  if (WOOD_MAP) return;
-  const wood = makeNoiseCanvas(512, (ctx, s) => {
-    const g = ctx.createLinearGradient(0, 0, s, 0);
-    g.addColorStop(0, "#5a3824");
-    g.addColorStop(0.35, "#7a4e2e");
-    g.addColorStop(0.55, "#6b4423");
-    g.addColorStop(0.8, "#8a6239");
-    g.addColorStop(1, "#5c4033");
-    ctx.fillStyle = g;
+  if (CLAY_MAP) return;
+  const clay = makeNoiseCanvas(256, (ctx, s) => {
+    ctx.fillStyle = "#f0d4b0";
     ctx.fillRect(0, 0, s, s);
-    for (let i = 0; i < 90; i++) {
-      const x = Math.random() * s;
-      ctx.strokeStyle = `rgba(40,22,12,${0.04 + Math.random() * 0.1})`;
-      ctx.lineWidth = 0.6 + Math.random() * 2.2;
+    for (let i = 0; i < 2200; i++) {
+      const v = 200 + (Math.random() * 40) | 0;
+      ctx.fillStyle = `rgba(${v},${(v * 0.88) | 0},${(v * 0.72) | 0},${0.04 + Math.random() * 0.08})`;
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      let yy = 0;
-      while (yy < s) {
-        const nx = x + Math.sin(yy * 0.04 + i) * (2 + Math.random() * 4);
-        ctx.lineTo(nx, yy + 8);
-        yy += 8;
-      }
-      ctx.stroke();
+      ctx.arc(Math.random() * s, Math.random() * s, 0.6 + Math.random() * 2.2, 0, Math.PI * 2);
+      ctx.fill();
     }
     for (let i = 0; i < 40; i++) {
-      ctx.fillStyle = `rgba(255,220,180,${0.015 + Math.random() * 0.03})`;
-      ctx.fillRect(Math.random() * s, Math.random() * s, 2 + Math.random() * 40, 1);
-    }
-  });
-  WOOD_MAP = new THREE.CanvasTexture(wood);
-  WOOD_MAP.wrapS = WOOD_MAP.wrapT = THREE.RepeatWrapping;
-  WOOD_MAP.repeat.set(1.6, 1.2);
-  WOOD_MAP.colorSpace = THREE.SRGBColorSpace;
-  WOOD_MAP.anisotropy = 8;
-
-  const rough = makeNoiseCanvas(256, (ctx, s) => {
-    const img = ctx.createImageData(s, s);
-    for (let i = 0; i < img.data.length; i += 4) {
-      const v = 140 + (Math.random() * 80) | 0;
-      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
-      img.data[i + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-  });
-  WOOD_ROUGH = new THREE.CanvasTexture(rough);
-  WOOD_ROUGH.wrapS = WOOD_ROUGH.wrapT = THREE.RepeatWrapping;
-
-  const floor = makeNoiseCanvas(512, (ctx, s) => {
-    ctx.fillStyle = "#efe6d6";
-    ctx.fillRect(0, 0, s, s);
-    const plank = s / 8;
-    for (let x = 0; x < s; x += plank) {
-      ctx.fillStyle = x / plank % 2 === 0 ? "#f3ebdc" : "#e8decc";
-      ctx.fillRect(x, 0, plank - 2, s);
-      ctx.strokeStyle = "rgba(180,160,130,0.35)";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = `rgba(180,120,80,${0.03 + Math.random() * 0.05})`;
+      ctx.lineWidth = 1 + Math.random() * 2;
       ctx.beginPath();
-      ctx.moveTo(x + plank - 1, 0);
-      ctx.lineTo(x + plank - 1, s);
+      ctx.moveTo(Math.random() * s, Math.random() * s);
+      ctx.quadraticCurveTo(Math.random() * s, Math.random() * s, Math.random() * s, Math.random() * s);
       ctx.stroke();
-      for (let y = 0; y < s; y += plank * 2.2) {
-        ctx.strokeStyle = "rgba(170,150,120,0.22)";
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x + plank - 2, y);
-        ctx.stroke();
-      }
+    }
+  });
+  CLAY_MAP = new THREE.CanvasTexture(clay);
+  CLAY_MAP.wrapS = CLAY_MAP.wrapT = THREE.RepeatWrapping;
+  CLAY_MAP.repeat.set(2, 2);
+  CLAY_MAP.colorSpace = THREE.SRGBColorSpace;
+
+  const floor = makeNoiseCanvas(256, (ctx, s) => {
+    ctx.fillStyle = "#e6e2ed";
+    ctx.fillRect(0, 0, s, s);
+    for (let i = 0; i < 800; i++) {
+      const v = 210 + (Math.random() * 30) | 0;
+      ctx.fillStyle = `rgba(${v},${v - 4},${v + 6},${0.05 + Math.random() * 0.08})`;
+      ctx.fillRect(Math.random() * s, Math.random() * s, 2 + Math.random() * 18, 1 + Math.random() * 3);
     }
   });
   FLOOR_MAP = new THREE.CanvasTexture(floor);
   FLOOR_MAP.wrapS = FLOOR_MAP.wrapT = THREE.RepeatWrapping;
-  FLOOR_MAP.repeat.set(4, 3);
+  FLOOR_MAP.repeat.set(3, 2.5);
   FLOOR_MAP.colorSpace = THREE.SRGBColorSpace;
-  FLOOR_MAP.anisotropy = 8;
 }
 
-function matStandard(color, opts = {}) {
+function matClay(color, opts = {}) {
   return new THREE.MeshStandardMaterial({
     color,
-    roughness: opts.roughness ?? 0.75,
-    metalness: opts.metalness ?? 0.05,
+    roughness: opts.roughness ?? 0.92,
+    metalness: opts.metalness ?? 0,
     emissive: opts.emissive != null ? opts.emissive : 0x000000,
     emissiveIntensity: opts.emissiveIntensity ?? 0,
     map: opts.map || null,
-    roughnessMap: opts.roughnessMap || null,
-    envMapIntensity: opts.envMapIntensity ?? 1,
+    envMapIntensity: opts.envMapIntensity ?? 0.25,
     transparent: opts.opacity != null && opts.opacity < 1,
     opacity: opts.opacity ?? 1,
-    side: opts.side ?? THREE.FrontSide
+    side: opts.side ?? THREE.FrontSide,
+    flatShading: false
   });
 }
 
-function matPhysical(color, opts = {}) {
-  return new THREE.MeshPhysicalMaterial({
-    color,
-    roughness: opts.roughness ?? 0.35,
-    metalness: opts.metalness ?? 0.05,
-    emissive: opts.emissive != null ? opts.emissive : 0x000000,
-    emissiveIntensity: opts.emissiveIntensity ?? 0,
-    map: opts.map || null,
-    roughnessMap: opts.roughnessMap || null,
-    envMapIntensity: opts.envMapIntensity ?? 1.2,
-    transparent: (opts.opacity != null && opts.opacity < 1) || (opts.transmission ?? 0) > 0,
-    opacity: opts.opacity ?? 1,
-    transmission: opts.transmission ?? 0,
-    thickness: opts.thickness ?? 0.35,
-    ior: opts.ior ?? 1.45,
-    clearcoat: opts.clearcoat ?? 0,
-    clearcoatRoughness: opts.clearcoatRoughness ?? 0.25,
-    attenuationColor: opts.attenuationColor,
-    attenuationDistance: opts.attenuationDistance,
-    side: opts.side ?? THREE.FrontSide
-  });
-}
-
-function box(w, h, d, color, opts = {}) {
-  const geo = opts.rounded
-    ? new RoundedBoxGeometry(w, h, d, opts.segments ?? 3, opts.radius ?? Math.min(0.05, Math.min(w, h, d) * 0.12))
-    : new THREE.BoxGeometry(w, h, d);
-  const usePhysical = !!opts.physical || !!opts.transmission || !!opts.clearcoat;
-  const m = new THREE.Mesh(
-    geo,
-    usePhysical ? matPhysical(color, opts) : matStandard(color, opts)
-  );
+function clayBox(w, h, d, color, opts = {}) {
+  const r = opts.radius ?? Math.min(0.08, Math.min(w, h, d) * 0.22);
+  const geo = opts.sphere
+    ? new THREE.SphereGeometry(Math.min(w, h, d) / 2, opts.segments ?? 16, opts.segments ?? 12)
+    : new RoundedBoxGeometry(w, h, d, opts.segments ?? 4, r);
+  const m = new THREE.Mesh(geo, matClay(color, opts));
   m.castShadow = opts.castShadow !== false;
   m.receiveShadow = opts.receiveShadow !== false;
   if (opts.pos) m.position.set(...opts.pos);
+  if (opts.scale) m.scale.set(...opts.scale);
   return m;
 }
 
-function neonStrip(w, h, d, color, pos, intensity = 1.1) {
-  return box(w, h, d, color, {
-    roughness: 0.25, metalness: 0.35,
+function softGlowBlob(w, h, d, color, pos, intensity = 0.55) {
+  return clayBox(w, h, d, color, {
+    roughness: 0.88, metalness: 0,
     emissive: color, emissiveIntensity: intensity,
-    castShadow: false, receiveShadow: false, pos
+    castShadow: false, receiveShadow: false, pos,
+    radius: Math.min(w, h, d) * 0.35
   });
 }
 
@@ -218,131 +158,202 @@ function cssLabel(text, className, pos) {
   return obj;
 }
 
+function hairColor(agent) {
+  const palette = [0x3a2a22, 0x6b4423, 0xc4a060, 0x2c2c2c, 0x8b5a3c, 0xd4b896, 0x4a3728];
+  let h = 0;
+  for (let i = 0; i < agent.id.length; i++) h = (h * 31 + agent.id.charCodeAt(i)) | 0;
+  return palette[Math.abs(h) % palette.length];
+}
+
 function makeAvatar(agent) {
   const g = new THREE.Group();
   g.userData.agentId = agent.id;
 
-  const body = box(0.5, 0.75, 0.32, agent.color, {
-    roughness: 0.45, clearcoat: 0.25, physical: true, rounded: true, radius: 0.06
+  // Small body — color-block clay outfit
+  const body = clayBox(0.42, 0.55, 0.28, agent.color, {
+    roughness: 0.95, radius: 0.1, segments: 4
   });
-  body.position.y = 0.78;
+  body.position.y = 0.62;
   g.add(body);
 
+  // Pants
+  const pants = clayBox(0.4, 0.28, 0.26, 0x5a6a72, { roughness: 0.95, radius: 0.08 });
+  pants.position.y = 0.28;
+  g.add(pants);
+
+  // Oversized clay head
   const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.24, 24, 24),
-    matPhysical(0xf2d6c2, { roughness: 0.55, clearcoat: 0.15 })
+    new THREE.SphereGeometry(0.34, 20, 18),
+    matClay(C.claySkin, { roughness: 0.96, envMapIntensity: 0.15 })
   );
-  head.position.y = 1.35;
+  head.position.y = 1.12;
+  head.scale.set(1.05, 1.0, 0.95);
   head.castShadow = true;
   g.add(head);
 
-  const glow = new THREE.Mesh(
-    new THREE.SphereGeometry(0.1, 16, 16),
-    matStandard(0x8a948c, {
-      emissive: 0x8a948c, emissiveIntensity: 0.6, opacity: 0.85
-    })
+  // Sculpted clay hair blob
+  const hair = new THREE.Mesh(
+    new THREE.SphereGeometry(0.3, 14, 12),
+    matClay(hairColor(agent), { roughness: 0.98 })
   );
-  glow.position.set(0, 1.72, 0);
+  hair.position.set(0, 1.32, -0.02);
+  hair.scale.set(1.15, 0.55, 1.05);
+  hair.castShadow = true;
+  g.add(hair);
+
+  // Big simple eyes
+  const eyeGeo = new THREE.SphereGeometry(0.07, 12, 10);
+  const eyeMat = matClay(0xffffff, { roughness: 0.7 });
+  const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+  eyeL.position.set(-0.11, 1.14, 0.28);
+  const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+  eyeR.position.set(0.11, 1.14, 0.28);
+  g.add(eyeL, eyeR);
+  const pupilMat = matClay(0x2a2218, { roughness: 0.6 });
+  const pL = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), pupilMat);
+  pL.position.set(-0.11, 1.14, 0.34);
+  const pR = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), pupilMat);
+  pR.position.set(0.11, 1.14, 0.34);
+  g.add(pL, pR);
+
+  // Blob nose
+  const nose = new THREE.Mesh(
+    new THREE.SphereGeometry(0.06, 10, 8),
+    matClay(0xe8b090, { roughness: 0.95 })
+  );
+  nose.position.set(0, 1.06, 0.34);
+  g.add(nose);
+
+  // Status glow — soft clay bead (not neon)
+  const glow = new THREE.Mesh(
+    new THREE.SphereGeometry(0.09, 12, 10),
+    matClay(0xc4b8a8, { emissive: 0xc4b8a8, emissiveIntensity: 0.35, roughness: 0.85 })
+  );
+  glow.position.set(0, 1.55, 0);
   g.add(glow);
   g.userData.glow = glow;
   g.userData.body = body;
 
-  const legL = box(0.12, 0.4, 0.16, 0x5a6a62, { roughness: 0.8, rounded: true, radius: 0.03 });
-  legL.position.set(-0.12, 0.2, 0);
-  const legR = box(0.12, 0.4, 0.16, 0x5a6a62, { roughness: 0.8, rounded: true, radius: 0.03 });
-  legR.position.set(0.12, 0.2, 0);
+  const legL = clayBox(0.12, 0.32, 0.14, 0x5a6a72, { roughness: 0.95, radius: 0.05 });
+  legL.position.set(-0.1, 0.16, 0);
+  const legR = clayBox(0.12, 0.32, 0.14, 0x5a6a72, { roughness: 0.95, radius: 0.05 });
+  legR.position.set(0.1, 0.16, 0);
   g.add(legL, legR);
   g.userData.legs = [legL, legR];
 
   const label = document.createElement("div");
-  label.className = "label3d";
+  label.className = "label3d clay";
   label.innerHTML = `<span class="l3-name">${agent.name}</span><span class="l3-role">${agent.role}</span>`;
   const labelObj = new CSS2DObject(label);
-  labelObj.position.set(0, 1.95, 0);
+  labelObj.position.set(0, 1.78, 0);
   g.add(labelObj);
   g.userData.labelEl = label;
 
   const bubble = document.createElement("div");
-  bubble.className = "bubble3d";
+  bubble.className = "bubble3d clay";
   bubble.style.display = "none";
   const bubbleObj = new CSS2DObject(bubble);
-  bubbleObj.position.set(0, 2.35, 0);
+  bubbleObj.position.set(0, 2.15, 0);
   g.add(bubbleObj);
   g.userData.bubbleEl = bubble;
 
   return g;
 }
 
-function walnutDeskAt(scene, x, y, z) {
+function clayDeskAt(scene, x, y, z) {
   initTextures();
-  scene.add(box(1.45, 0.09, 0.78, C.deskTop, {
-    roughness: 0.38, metalness: 0.05, clearcoat: 0.35, clearcoatRoughness: 0.3,
-    physical: true, rounded: true, radius: 0.035,
-    map: WOOD_MAP, roughnessMap: WOOD_ROUGH, envMapIntensity: 0.85,
-    pos: [x, y + 0.72, z]
+  // Chunky peach/terracotta desk body
+  scene.add(clayBox(1.5, 0.55, 0.82, C.deskSide, {
+    roughness: 0.94, radius: 0.1, map: CLAY_MAP, pos: [x, y + 0.42, z]
   }));
-  scene.add(box(1.25, 0.014, 0.045, C.deskGrain, {
-    roughness: 0.5, castShadow: false, map: WOOD_MAP, pos: [x, y + 0.775, z]
+  // Soft cream top
+  scene.add(clayBox(1.55, 0.12, 0.86, C.deskTop, {
+    roughness: 0.9, radius: 0.06, pos: [x, y + 0.74, z]
   }));
-  [[-0.58, -0.28], [0.58, -0.28], [-0.58, 0.28], [0.58, 0.28]].forEach(([dx, dz]) => {
-    scene.add(box(0.09, 0.68, 0.09, C.deskLeg, {
-      roughness: 0.55, rounded: true, radius: 0.02, map: WOOD_MAP, pos: [x + dx, y + 0.34, z + dz]
-    }));
-  });
-  scene.add(box(0.62, 0.4, 0.05, C.monitor, {
-    roughness: 0.35, metalness: 0.25, clearcoat: 0.4, physical: true, rounded: true, radius: 0.02,
-    pos: [x, y + 1.05, z - 0.26]
+  // Blob drawer fronts
+  scene.add(clayBox(0.5, 0.18, 0.06, C.desk, {
+    roughness: 0.92, radius: 0.05, castShadow: false, pos: [x - 0.35, y + 0.4, z + 0.4]
   }));
-  scene.add(box(0.52, 0.3, 0.02, C.screen, {
-    roughness: 0.15, metalness: 0.4,
-    emissive: C.neonCyan, emissiveIntensity: 0.45,
-    physical: true, clearcoat: 0.6,
-    pos: [x, y + 1.05, z - 0.22]
+  scene.add(clayBox(0.5, 0.18, 0.06, C.desk, {
+    roughness: 0.92, radius: 0.05, castShadow: false, pos: [x + 0.35, y + 0.4, z + 0.4]
   }));
-  scene.add(box(0.5, 0.07, 0.5, C.chair, {
-    roughness: 0.55, rounded: true, radius: 0.04, map: WOOD_MAP, pos: [x, y + 0.45, z + 0.62]
+  // Soft cream CRT / rounded monitor
+  scene.add(clayBox(0.7, 0.52, 0.18, C.monitor, {
+    roughness: 0.88, radius: 0.08, pos: [x, y + 1.1, z - 0.22]
   }));
-  scene.add(box(0.5, 0.48, 0.07, C.chairBack, {
-    roughness: 0.55, rounded: true, radius: 0.035, map: WOOD_MAP, pos: [x, y + 0.72, z + 0.85]
+  scene.add(clayBox(0.55, 0.38, 0.04, C.screen, {
+    roughness: 0.75, emissive: C.screen, emissiveIntensity: 0.18,
+    castShadow: false, pos: [x, y + 1.12, z - 0.12]
   }));
-  scene.add(box(0.07, 0.4, 0.07, C.deskLeg, {
-    roughness: 0.5, rounded: true, radius: 0.02, pos: [x, y + 0.22, z + 0.62]
+  // Fat keyboard
+  scene.add(clayBox(0.55, 0.06, 0.28, 0xd8d0c4, {
+    roughness: 0.92, radius: 0.03, pos: [x, y + 0.84, z + 0.12]
+  }));
+  // Mug
+  scene.add(clayBox(0.1, 0.12, 0.1, C.plantPot, {
+    roughness: 0.95, radius: 0.04, castShadow: false, pos: [x + 0.48, y + 0.88, z + 0.05]
+  }));
+  // Dusty-blue rounded swivel chair
+  scene.add(clayBox(0.52, 0.14, 0.52, C.chair, {
+    roughness: 0.94, radius: 0.08, pos: [x, y + 0.42, z + 0.72]
+  }));
+  scene.add(clayBox(0.48, 0.55, 0.12, C.chair, {
+    roughness: 0.94, radius: 0.07, pos: [x, y + 0.72, z + 0.92]
+  }));
+  scene.add(clayBox(0.12, 0.36, 0.12, C.chairWood, {
+    roughness: 0.92, radius: 0.04, pos: [x, y + 0.2, z + 0.72]
+  }));
+  // Base star (simplified blob)
+  scene.add(clayBox(0.45, 0.06, 0.45, C.chairWood, {
+    roughness: 0.92, radius: 0.03, pos: [x, y + 0.04, z + 0.72]
   }));
 }
 
-function walnutShelf(scene, x, y, z) {
+function clayShelf(scene, x, y, z) {
   initTextures();
-  scene.add(box(1.2, 1.35, 0.26, C.shelf, {
-    roughness: 0.48, rounded: true, radius: 0.03, map: WOOD_MAP, pos: [x, y + 0.75, z]
+  scene.add(clayBox(1.15, 1.4, 0.32, C.shelf, {
+    roughness: 0.93, radius: 0.08, map: CLAY_MAP, pos: [x, y + 0.75, z]
   }));
-  for (let i = 0; i < 3; i++) {
-    scene.add(box(1.08, 0.035, 0.22, C.deskGrain, {
-      roughness: 0.45, castShadow: false, map: WOOD_MAP, pos: [x, y + 0.35 + i * 0.35, z + 0.02]
-    }));
+  const cols = [C.bookA, C.bookB, C.bookC, C.bookD, 0x9a7ab0];
+  for (let row = 0; row < 3; row++) {
+    for (let i = 0; i < 4; i++) {
+      const bh = 0.18 + (i % 3) * 0.04;
+      scene.add(clayBox(0.14, bh, 0.18, cols[(row + i) % cols.length], {
+        roughness: 0.95, radius: 0.03, castShadow: false,
+        pos: [x - 0.38 + i * 0.24, y + 0.28 + row * 0.38 + bh / 2, z + 0.02]
+      }));
+    }
   }
 }
 
 function plantAt(scene, x, y, z, scale = 1) {
-  scene.add(box(0.32 * scale, 0.28 * scale, 0.32 * scale, C.plantPot, {
-    roughness: 0.7, rounded: true, radius: 0.04, pos: [x, y + 0.14 * scale, z]
+  scene.add(clayBox(0.34 * scale, 0.3 * scale, 0.34 * scale, C.plantPot, {
+    roughness: 0.95, radius: 0.08, pos: [x, y + 0.15 * scale, z]
   }));
   const foliage = new THREE.Mesh(
-    new THREE.SphereGeometry(0.38 * scale, 16, 12),
-    matStandard(C.plant, { roughness: 0.9, envMapIntensity: 0.4 })
+    new THREE.SphereGeometry(0.4 * scale, 14, 12),
+    matClay(C.plant, { roughness: 0.98, envMapIntensity: 0.2 })
   );
   foliage.position.set(x, y + 0.55 * scale, z);
-  foliage.scale.set(1, 1.15, 1);
+  foliage.scale.set(1, 1.2, 1);
   foliage.castShadow = true;
   scene.add(foliage);
+  // Extra leaf blob
+  const leaf2 = new THREE.Mesh(
+    new THREE.SphereGeometry(0.22 * scale, 10, 8),
+    matClay(0x6a9060, { roughness: 0.98 })
+  );
+  leaf2.position.set(x + 0.18 * scale, y + 0.48 * scale, z - 0.1 * scale);
+  scene.add(leaf2);
 }
 
 function treeAt(scene, x, z, h = 2.4) {
-  scene.add(box(0.22, h * 0.35, 0.22, 0x5c4033, {
-    roughness: 0.85, rounded: true, radius: 0.04, pos: [x, h * 0.17, z]
+  scene.add(clayBox(0.28, h * 0.35, 0.28, 0xc4a070, {
+    roughness: 0.96, radius: 0.08, pos: [x, h * 0.17, z]
   }));
   const crown = new THREE.Mesh(
-    new THREE.SphereGeometry(0.85, 14, 12),
-    matStandard(C.tree, { roughness: 0.92 })
+    new THREE.SphereGeometry(0.9, 14, 12),
+    matClay(C.tree, { roughness: 0.98 })
   );
   crown.position.set(x, h * 0.55, z);
   crown.scale.set(1, h * 0.35, 1);
@@ -350,38 +361,46 @@ function treeAt(scene, x, z, h = 2.4) {
   scene.add(crown);
 }
 
-function glassPanel(w, h, d, pos, mobile) {
-  if (mobile) {
-    return box(w, h, d, C.glass, {
-      roughness: 0.12, metalness: 0.15, opacity: 0.28,
-      physical: true, clearcoat: 0.5, envMapIntensity: 1.6,
-      castShadow: false, pos
-    });
-  }
-  return box(w, h, d, 0xd7eef4, {
-    roughness: 0.05, metalness: 0,
-    transmission: 0.85, thickness: 0.4, ior: 1.5,
-    opacity: 1, physical: true, clearcoat: 1, clearcoatRoughness: 0.05,
-    envMapIntensity: 1.4, castShadow: false, pos,
-    attenuationColor: new THREE.Color(0xc5e4ec), attenuationDistance: 2.5
+function clayPanel(w, h, d, pos) {
+  // Matte frosted clay "glass" — no transmission cyber look
+  return clayBox(w, h, d, C.glass, {
+    roughness: 0.82, metalness: 0, opacity: 0.55,
+    envMapIntensity: 0.2, castShadow: false, pos, radius: 0.04
   });
 }
 
 function addFloorBadge(scene, floor, title) {
   const y = fy(floor) + WALL_H * 0.55;
-  scene.add(cssLabel(`${floor}  ${title}`, "floor-badge", [-HALF_W - 0.15, y, 0]));
+  scene.add(cssLabel(`${floor}  ${title}`, "floor-badge clay", [-HALF_W - 0.15, y, 0]));
+}
+
+function pendantAt(scene, x, y, z) {
+  scene.add(clayBox(0.06, 0.35, 0.06, 0xd8c8b0, {
+    roughness: 0.9, castShadow: false, radius: 0.02, pos: [x, y + 0.2, z]
+  }));
+  const bulb = new THREE.Mesh(
+    new THREE.SphereGeometry(0.16, 14, 12),
+    matClay(C.warmLamp, { roughness: 0.7, emissive: C.warmLamp, emissiveIntensity: 0.65 })
+  );
+  bulb.position.set(x, y, z);
+  bulb.castShadow = false;
+  scene.add(bulb);
+  const pl = new THREE.PointLight(C.warmLamp, 0.35, 6, 2);
+  pl.position.set(x, y - 0.1, z);
+  scene.add(pl);
 }
 
 function buildExterior(scene) {
   initTextures();
-  const ground = box(48, 0.08, 40, 0xeae3d6, {
-    roughness: 0.95, castShadow: false, map: FLOOR_MAP, pos: [0, -0.12, 2]
+  // Soft gradient void platform under the diorama
+  const ground = clayBox(52, 0.12, 44, C.void, {
+    roughness: 0.98, castShadow: false, map: FLOOR_MAP, pos: [0, -0.2, 2], radius: 0.02
   });
   scene.add(ground);
-  scene.add(box(4.2, 0.06, 28, C.road, { roughness: 0.95, castShadow: false, pos: [-HALF_W - 4.5, -0.06, 1] }));
-  for (let z = -10; z <= 12; z += 2.2) {
-    scene.add(box(0.18, 0.02, 1.0, C.roadLine, { castShadow: false, receiveShadow: false, pos: [-HALF_W - 4.5, -0.02, z] }));
-  }
+  // Soft peach plinth ring
+  scene.add(clayBox(BW + 2.5, 0.18, BD + 2.5, 0xf0d4b8, {
+    roughness: 0.95, castShadow: false, pos: [0, -0.05, 0], radius: 0.08
+  }));
   [[-HALF_W - 7, -6], [-HALF_W - 6.5, 2], [-HALF_W - 7.2, 8], [HALF_W + 3, -7], [HALF_W + 4, 6]].forEach(([x, z], i) => {
     treeAt(scene, x, z, 2.0 + (i % 3) * 0.35);
   });
@@ -392,63 +411,82 @@ function buildExterior(scene) {
 function buildSlab(scene, floor) {
   initTextures();
   const y = fy(floor);
-  scene.add(box(BW, 0.16, BD, C.floor, {
-    roughness: 0.55, metalness: 0.02, clearcoat: 0.2, physical: true,
-    map: FLOOR_MAP, envMapIntensity: 0.55, pos: [0, y - 0.08, 0]
+  scene.add(clayBox(BW, 0.2, BD, C.floor, {
+    roughness: 0.94, map: FLOOR_MAP, envMapIntensity: 0.2, pos: [0, y - 0.1, 0], radius: 0.04
   }));
-  for (let i = -7; i <= 7; i += 2) {
-    scene.add(box(0.03, 0.015, BD - 0.4, C.floorEdge, {
-      roughness: 0.9, castShadow: false, pos: [i, y + 0.01, 0]
-    }));
-  }
+  // Soft orange trim like Magnific diorama
+  scene.add(clayBox(BW + 0.15, 0.08, 0.12, C.exteriorEdge, {
+    roughness: 0.92, castShadow: false, pos: [0, y + 0.02, HALF_D], radius: 0.03
+  }));
+  scene.add(clayBox(0.12, 0.08, BD + 0.15, C.exteriorEdge, {
+    roughness: 0.92, castShadow: false, pos: [HALF_W, y + 0.02, 0], radius: 0.03
+  }));
   if (floor < 3) {
-    scene.add(box(BW + 0.3, 0.18, BD + 0.3, C.slab, {
-      roughness: 0.7, pos: [0, y + WALL_H + 0.09, 0]
+    scene.add(clayBox(BW + 0.35, 0.22, BD + 0.35, C.slab, {
+      roughness: 0.94, pos: [0, y + WALL_H + 0.1, 0], radius: 0.06
     }));
   }
 }
 
-function buildShellWalls(scene, mobile) {
+function buildShellWalls(scene) {
   for (let f = 1; f <= 3; f++) {
     const y = fy(f);
     const midY = y + WALL_H / 2;
-    scene.add(box(BW, WALL_H, 0.18, C.exterior, { roughness: 0.78, pos: [0, midY, -HALF_D] }));
-    scene.add(box(0.18, WALL_H, BD, C.exterior, { roughness: 0.78, pos: [-HALF_W, midY, 0] }));
-    scene.add(glassPanel(0.06, 1.1, BD - 1.5, [-HALF_W + 0.08, y + 1.5, 0], mobile));
-    scene.add(box(BW, 0.12, 0.12, C.exteriorEdge, { pos: [0, y + 0.06, HALF_D] }));
-    scene.add(box(0.12, 0.12, BD, C.exteriorEdge, { pos: [HALF_W, y + 0.06, 0] }));
-    scene.add(neonStrip(BW - 0.5, 0.04, 0.04, f === 3 ? C.neonCyan : (f === 2 ? C.neonAmber : C.neonMagenta),
-      [0, y + WALL_H - 0.12, HALF_D - 0.15], 1.15));
+    // Mustard-peach clay walls
+    scene.add(clayBox(BW, WALL_H, 0.28, C.exterior, {
+      roughness: 0.95, map: CLAY_MAP, pos: [0, midY, -HALF_D], radius: 0.06
+    }));
+    scene.add(clayBox(0.28, WALL_H, BD, C.exterior, {
+      roughness: 0.95, map: CLAY_MAP, pos: [-HALF_W, midY, 0], radius: 0.06
+    }));
+    // Soft window cutouts (recessed clay, warm gradient feel)
+    scene.add(clayBox(0.08, 1.0, 2.2, 0xf8e8d0, {
+      roughness: 0.7, emissive: 0xffe8c8, emissiveIntensity: 0.25,
+      castShadow: false, pos: [-HALF_W + 0.12, y + 1.6, -2], radius: 0.04
+    }));
+    scene.add(clayBox(0.08, 1.0, 2.2, 0xf8e8d0, {
+      roughness: 0.7, emissive: 0xffe8c8, emissiveIntensity: 0.25,
+      castShadow: false, pos: [-HALF_W + 0.12, y + 1.6, 2], radius: 0.04
+    }));
+    // Soft warm accent line (not neon)
+    scene.add(softGlowBlob(BW - 0.8, 0.06, 0.06, C.softGlow,
+      [0, y + WALL_H - 0.18, HALF_D - 0.2], 0.4));
   }
   for (let f = 1; f <= 3; f++) {
     const y = fy(f);
-    scene.add(box(0.28, WALL_H, 0.28, C.exteriorEdge, { roughness: 0.55, rounded: true, radius: 0.04, pos: [-HALF_W, y + WALL_H / 2, -HALF_D] }));
-    scene.add(box(0.28, WALL_H, 0.28, C.exteriorEdge, { roughness: 0.55, rounded: true, radius: 0.04, pos: [HALF_W, y + WALL_H / 2, -HALF_D] }));
+    scene.add(clayBox(0.36, WALL_H, 0.36, C.exteriorEdge, {
+      roughness: 0.94, radius: 0.1, pos: [-HALF_W, y + WALL_H / 2, -HALF_D]
+    }));
+    scene.add(clayBox(0.36, WALL_H, 0.36, C.exteriorEdge, {
+      roughness: 0.94, radius: 0.1, pos: [HALF_W, y + WALL_H / 2, -HALF_D]
+    }));
   }
 }
 
-function buildElevator(scene, mobile) {
+function buildElevator(scene) {
   const ex = -HALF_W + 1.35;
   const ez = -1.2;
   const totalH = fy(3) + WALL_H;
-  scene.add(glassPanel(0.08, totalH, 2.4, [ex - 0.85, totalH / 2, ez], mobile));
-  scene.add(glassPanel(0.08, totalH, 2.4, [ex + 0.85, totalH / 2, ez], mobile));
-  scene.add(glassPanel(1.7, totalH, 0.08, [ex, totalH / 2, ez - 1.15], mobile));
-  scene.add(glassPanel(1.7, totalH, 0.08, [ex, totalH / 2, ez + 1.15], mobile));
-  [[-0.85, -1.15], [0.85, -1.15], [-0.85, 1.15], [0.85, 1.15]].forEach(([dx, dz]) => {
-    scene.add(box(0.1, totalH, 0.1, 0xc8c2b6, { roughness: 0.4, metalness: 0.35, pos: [ex + dx, totalH / 2, ez + dz] }));
+  // Matte clay shaft (frosted panels, no glass transmission)
+  scene.add(clayPanel(0.1, totalH, 2.5, [ex - 0.9, totalH / 2, ez]));
+  scene.add(clayPanel(0.1, totalH, 2.5, [ex + 0.9, totalH / 2, ez]));
+  scene.add(clayPanel(1.8, totalH, 0.1, [ex, totalH / 2, ez - 1.2]));
+  scene.add(clayPanel(1.8, totalH, 0.1, [ex, totalH / 2, ez + 1.2]));
+  [[-0.9, -1.2], [0.9, -1.2], [-0.9, 1.2], [0.9, 1.2]].forEach(([dx, dz]) => {
+    scene.add(clayBox(0.14, totalH, 0.14, C.exteriorEdge, {
+      roughness: 0.92, radius: 0.05, pos: [ex + dx, totalH / 2, ez + dz]
+    }));
   });
-  const cab = box(1.3, 2.0, 1.8, 0xdfe8ea, {
-    roughness: 0.25, metalness: 0.2, opacity: 0.45,
-    physical: true, clearcoat: 0.5,
-    emissive: C.neonCyan, emissiveIntensity: 0.2,
-    pos: [ex, fy(2) + 1.0, ez]
+  const cab = clayBox(1.35, 2.0, 1.85, 0xf0e4d4, {
+    roughness: 0.88, opacity: 0.7, emissive: C.softGlow, emissiveIntensity: 0.15,
+    pos: [ex, fy(2) + 1.0, ez], radius: 0.1
   });
   cab.userData.isElevatorCab = true;
   scene.add(cab);
   scene.userData.elevatorCab = cab;
-  scene.add(neonStrip(0.05, totalH - 0.4, 0.05, C.neonCyan, [ex - 0.85, totalH / 2, ez + 1.15], 1.25));
-  scene.add(neonStrip(0.05, totalH - 0.4, 0.05, C.neonCyan, [ex + 0.85, totalH / 2, ez + 1.15], 1.25));
+  // Soft warm shaft glow (replaces cyan neon)
+  scene.add(softGlowBlob(0.08, totalH - 0.5, 0.08, C.warmLamp, [ex - 0.9, totalH / 2, ez + 1.2], 0.45));
+  scene.add(softGlowBlob(0.08, totalH - 0.5, 0.08, C.warmLamp, [ex + 0.9, totalH / 2, ez + 1.2], 0.45));
 }
 
 function buildStairs(scene) {
@@ -460,94 +498,100 @@ function buildStairs(scene) {
     const steps = 8;
     for (let i = 0; i < steps; i++) {
       const t = i / steps;
-      scene.add(box(1.4, 0.12, 0.42, C.deskGrain, {
-        roughness: 0.45, rounded: true, radius: 0.02, map: WOOD_MAP,
-        pos: [sx, y0 + t * FH + 0.06, sz - i * 0.38]
+      scene.add(clayBox(1.45, 0.14, 0.45, C.desk, {
+        roughness: 0.93, radius: 0.05, map: CLAY_MAP,
+        pos: [sx, y0 + t * FH + 0.07, sz - i * 0.38]
       }));
     }
-    scene.add(box(0.06, FH * 0.9, 0.06, 0xc8c2b6, {
-      metalness: 0.4, roughness: 0.35, pos: [sx + 0.75, y0 + FH * 0.45, sz - 1.4]
+    scene.add(clayBox(0.1, FH * 0.9, 0.1, C.exteriorEdge, {
+      roughness: 0.92, radius: 0.04, pos: [sx + 0.78, y0 + FH * 0.45, sz - 1.4]
     }));
   }
 }
 
-function buildServerRoom(scene, mobile) {
+function buildServerRoom(scene) {
   const y = fy(3);
   const cx = 5.4, cz = -3.4;
-  scene.add(glassPanel(4.2, 2.4, 0.08, [cx, y + 1.2, cz - 1.6], mobile));
-  scene.add(glassPanel(4.2, 2.4, 0.08, [cx, y + 1.2, cz + 1.6], mobile));
-  scene.add(glassPanel(0.08, 2.4, 3.2, [cx - 2.1, y + 1.2, cz], mobile));
-  scene.add(glassPanel(0.08, 2.4, 3.2, [cx + 2.1, y + 1.2, cz], mobile));
-  scene.add(neonStrip(4.0, 0.04, 0.04, C.neonRed, [cx, y + 2.45, cz - 1.6], 1.4));
+  scene.add(clayPanel(4.2, 2.4, 0.1, [cx, y + 1.2, cz - 1.6]));
+  scene.add(clayPanel(4.2, 2.4, 0.1, [cx, y + 1.2, cz + 1.6]));
+  scene.add(clayPanel(0.1, 2.4, 3.2, [cx - 2.1, y + 1.2, cz]));
+  scene.add(clayPanel(0.1, 2.4, 3.2, [cx + 2.1, y + 1.2, cz]));
   [-0.7, 0.7].forEach((dx) => {
-    scene.add(box(0.7, 1.8, 0.55, C.server, {
-      roughness: 0.28, metalness: 0.65, clearcoat: 0.3, physical: true, rounded: true, radius: 0.03,
-      pos: [cx + dx, y + 0.95, cz]
+    scene.add(clayBox(0.75, 1.85, 0.6, C.server, {
+      roughness: 0.9, radius: 0.08, pos: [cx + dx, y + 0.95, cz]
     }));
     for (let i = 0; i < 5; i++) {
-      const col = i % 2 === 0 ? 0x22c55e : 0x22d3ee;
-      scene.add(box(0.5, 0.06, 0.04, col, {
-        emissive: col, emissiveIntensity: 1.8, castShadow: false,
-        pos: [cx + dx, y + 0.4 + i * 0.28, cz + 0.28]
+      const col = i % 2 === 0 ? 0x7eb88a : 0x7eb8b0;
+      scene.add(clayBox(0.5, 0.08, 0.05, col, {
+        emissive: col, emissiveIntensity: 0.55, castShadow: false, roughness: 0.85,
+        pos: [cx + dx, y + 0.4 + i * 0.28, cz + 0.3], radius: 0.02
       }));
     }
   });
-  scene.add(cssLabel("SERVER ROOM", "room-badge", [cx, y + 2.7, cz]));
+  scene.add(cssLabel("SERVER ROOM", "room-badge clay", [cx, y + 2.7, cz]));
 }
 
 function buildCafe(scene) {
   initTextures();
   const y = fy(3);
   const cx = 5.6, cz = 2.8;
-  scene.add(box(1.6, 0.08, 1.0, C.deskTop, {
-    roughness: 0.35, clearcoat: 0.4, physical: true, rounded: true, map: WOOD_MAP, pos: [cx, y + 0.7, cz]
+  scene.add(clayBox(1.7, 0.55, 1.05, C.deskSide, {
+    roughness: 0.93, radius: 0.1, map: CLAY_MAP, pos: [cx, y + 0.4, cz]
   }));
-  [[-0.5, -0.55], [0.5, -0.55], [-0.5, 0.55], [0.5, 0.55]].forEach(([dx, dz]) => {
-    scene.add(box(0.35, 0.45, 0.35, C.chair, {
-      roughness: 0.55, rounded: true, radius: 0.04, map: WOOD_MAP, pos: [cx + dx, y + 0.28, cz + dz]
+  scene.add(clayBox(1.75, 0.12, 1.1, C.deskTop, {
+    roughness: 0.9, radius: 0.06, pos: [cx, y + 0.72, cz]
+  }));
+  [[-0.55, -0.6], [0.55, -0.6], [-0.55, 0.6], [0.55, 0.6]].forEach(([dx, dz]) => {
+    scene.add(clayBox(0.4, 0.42, 0.4, C.chair, {
+      roughness: 0.94, radius: 0.1, pos: [cx + dx, y + 0.26, cz + dz]
     }));
   });
-  walnutShelf(scene, cx + 1.6, y, cz - 0.8);
+  clayShelf(scene, cx + 1.6, y, cz - 0.8);
   plantAt(scene, cx - 1.3, y, cz + 0.9, 0.85);
-  scene.add(neonStrip(1.8, 0.12, 0.06, C.neonRed, [cx, y + 2.35, cz - 1.5], 1.8));
-  scene.add(cssLabel("CAFE", "room-badge neon-red", [cx, y + 2.55, cz - 1.5]));
-  const pl = new THREE.PointLight(C.neonRed, 0.7, 9, 2);
-  pl.position.set(cx, y + 2.2, cz);
-  scene.add(pl);
+  // Soft clay cafe sign (replaces neon strip)
+  scene.add(clayBox(1.6, 0.35, 0.12, C.cafeSign, {
+    roughness: 0.9, emissive: C.cafeSign, emissiveIntensity: 0.35,
+    radius: 0.08, pos: [cx, y + 2.35, cz - 1.5]
+  }));
+  scene.add(cssLabel("CAFE", "room-badge clay-warm", [cx, y + 2.55, cz - 1.5]));
+  pendantAt(scene, cx, y + 2.5, cz);
 }
 
 function buildKitchen(scene) {
   initTextures();
   const y = fy(2);
   const cx = 5.5, cz = -3.6;
-  scene.add(box(3.4, 0.9, 0.7, C.deskTop, {
-    roughness: 0.42, clearcoat: 0.25, physical: true, rounded: true, map: WOOD_MAP, pos: [cx, y + 0.45, cz]
+  scene.add(clayBox(3.5, 0.95, 0.75, C.deskSide, {
+    roughness: 0.93, radius: 0.1, map: CLAY_MAP, pos: [cx, y + 0.48, cz]
   }));
-  scene.add(box(3.2, 0.03, 0.55, C.deskGrain, { castShadow: false, map: WOOD_MAP, pos: [cx, y + 0.92, cz] }));
-  scene.add(box(0.45, 0.08, 0.35, 0xc5cdd2, {
-    metalness: 0.55, roughness: 0.25, clearcoat: 0.5, physical: true, pos: [cx - 0.9, y + 0.96, cz]
+  scene.add(clayBox(3.4, 0.12, 0.7, C.deskTop, {
+    roughness: 0.9, radius: 0.05, pos: [cx, y + 0.98, cz]
   }));
-  scene.add(box(0.4, 0.55, 0.35, C.desk, { roughness: 0.4, rounded: true, pos: [cx + 0.2, y + 1.2, cz] }));
-  scene.add(box(0.28, 0.12, 0.2, C.neonAmber, {
-    emissive: C.neonAmber, emissiveIntensity: 0.7, castShadow: false, pos: [cx + 0.2, y + 1.45, cz + 0.05]
+  scene.add(clayBox(0.5, 0.12, 0.4, 0xe0d8d0, {
+    roughness: 0.85, radius: 0.05, pos: [cx - 0.9, y + 1.08, cz]
   }));
-  scene.add(box(0.85, 1.7, 0.7, C.fridge, {
-    roughness: 0.28, metalness: 0.45, clearcoat: 0.55, physical: true, rounded: true, radius: 0.04,
-    pos: [cx + 1.55, y + 0.9, cz + 0.1]
+  // Coffee machine blob
+  scene.add(clayBox(0.42, 0.55, 0.38, C.monitor, {
+    roughness: 0.9, radius: 0.08, pos: [cx + 0.2, y + 1.28, cz]
   }));
-  scene.add(neonStrip(2.8, 0.04, 0.04, C.neonAmber, [cx, y + 1.55, cz - 0.4], 1.3));
-  scene.add(cssLabel("KITCHEN", "room-badge", [cx, y + 2.5, cz]));
-  const pl = new THREE.PointLight(C.neonAmber, 0.55, 8, 2);
-  pl.position.set(cx, y + 2.0, cz);
-  scene.add(pl);
+  scene.add(clayBox(0.28, 0.1, 0.2, C.warmLamp, {
+    emissive: C.warmLamp, emissiveIntensity: 0.4, castShadow: false,
+    radius: 0.04, pos: [cx + 0.2, y + 1.52, cz + 0.05]
+  }));
+  scene.add(clayBox(0.9, 1.75, 0.75, C.fridge, {
+    roughness: 0.88, radius: 0.1, pos: [cx + 1.55, y + 0.92, cz + 0.1]
+  }));
+  pendantAt(scene, cx - 0.5, y + 2.4, cz);
+  pendantAt(scene, cx + 0.8, y + 2.4, cz);
+  scene.add(cssLabel("KITCHEN", "room-badge clay", [cx, y + 2.5, cz]));
 }
 
 function buildLounge(scene, floor, x, z) {
   const y = fy(floor);
-  scene.add(box(2.0, 0.45, 0.85, C.sofa, { roughness: 0.72, rounded: true, radius: 0.06, pos: [x, y + 0.28, z] }));
-  scene.add(box(2.0, 0.55, 0.18, C.sofa, { roughness: 0.72, rounded: true, radius: 0.05, pos: [x, y + 0.55, z - 0.35] }));
-  scene.add(box(0.7, 0.08, 0.5, C.deskTop, {
-    roughness: 0.4, clearcoat: 0.3, physical: true, rounded: true, map: WOOD_MAP, pos: [x, y + 0.35, z + 0.85]
+  scene.add(clayBox(2.1, 0.5, 0.9, C.sofa, { roughness: 0.96, radius: 0.12, pos: [x, y + 0.3, z] }));
+  scene.add(clayBox(2.1, 0.55, 0.22, C.sofa, { roughness: 0.96, radius: 0.1, pos: [x, y + 0.58, z - 0.38] }));
+  scene.add(clayBox(0.75, 0.12, 0.55, C.deskTop, {
+    roughness: 0.9, radius: 0.06, pos: [x, y + 0.38, z + 0.9]
   }));
   plantAt(scene, x + 1.3, y, z + 0.2, 0.8);
 }
@@ -555,65 +599,77 @@ function buildLounge(scene, floor, x, z) {
 function buildReception(scene) {
   initTextures();
   const y = fy(1);
-  scene.add(box(3.6, 0.95, 0.85, 0xf5f0e8, {
-    roughness: 0.45, clearcoat: 0.2, physical: true, rounded: true, radius: 0.05, pos: [0.3, y + 0.48, 2.4]
+  scene.add(clayBox(3.7, 1.0, 0.9, 0xf5e8d8, {
+    roughness: 0.92, radius: 0.12, pos: [0.3, y + 0.5, 2.4]
   }));
-  scene.add(box(3.5, 0.08, 0.08, C.receptionStripe, {
-    emissive: C.receptionStripe, emissiveIntensity: 0.55, castShadow: false,
-    pos: [0.3, y + 0.85, 2.8]
+  scene.add(clayBox(3.5, 0.12, 0.12, C.receptionStripe, {
+    roughness: 0.9, emissive: C.receptionStripe, emissiveIntensity: 0.25,
+    castShadow: false, radius: 0.04, pos: [0.3, y + 0.9, 2.85]
   }));
-  scene.add(box(3.4, 0.06, 0.7, C.deskTop, {
-    roughness: 0.38, clearcoat: 0.35, physical: true, map: WOOD_MAP, pos: [0.3, y + 0.98, 2.4]
+  scene.add(clayBox(3.5, 0.1, 0.75, C.deskTop, {
+    roughness: 0.9, radius: 0.05, pos: [0.3, y + 1.02, 2.4]
   }));
   buildLounge(scene, 1, -4.2, 3.2);
-  scene.add(box(0.7, 0.55, 0.7, C.sofa, { roughness: 0.7, rounded: true, pos: [-2.6, y + 0.3, 3.6] }));
+  scene.add(clayBox(0.75, 0.55, 0.75, C.sofa, { roughness: 0.95, radius: 0.12, pos: [-2.6, y + 0.32, 3.6] }));
   plantAt(scene, -5.4, y, 3.8, 1.0);
+  // Wall art blobs
+  scene.add(clayBox(0.55, 0.4, 0.06, 0xe87860, {
+    roughness: 0.92, castShadow: false, radius: 0.04, pos: [-2, y + 2.0, -HALF_D + 0.2]
+  }));
+  scene.add(clayBox(0.4, 0.5, 0.06, 0x7eb8b0, {
+    roughness: 0.92, castShadow: false, radius: 0.04, pos: [-1.2, y + 2.05, -HALF_D + 0.2]
+  }));
+  pendantAt(scene, 0.3, y + 2.6, 1.5);
 }
 
-function buildConference(scene, mobile) {
+function buildConference(scene) {
   initTextures();
   const y = fy(1);
   const cx = 5.2, cz = -2.8;
-  scene.add(glassPanel(4.0, 2.5, 0.08, [cx, y + 1.25, cz - 1.7], mobile));
-  scene.add(glassPanel(4.0, 2.5, 0.08, [cx, y + 1.25, cz + 1.7], mobile));
-  scene.add(glassPanel(0.08, 2.5, 3.4, [cx - 2.0, y + 1.25, cz], mobile));
-  scene.add(glassPanel(0.08, 2.5, 3.4, [cx + 2.0, y + 1.25, cz], mobile));
-  scene.add(box(2.4, 0.08, 1.1, C.deskTop, {
-    roughness: 0.35, clearcoat: 0.45, physical: true, rounded: true, map: WOOD_MAP, pos: [cx, y + 0.72, cz]
+  scene.add(clayPanel(4.0, 2.5, 0.1, [cx, y + 1.25, cz - 1.7]));
+  scene.add(clayPanel(4.0, 2.5, 0.1, [cx, y + 1.25, cz + 1.7]));
+  scene.add(clayPanel(0.1, 2.5, 3.4, [cx - 2.0, y + 1.25, cz]));
+  scene.add(clayPanel(0.1, 2.5, 3.4, [cx + 2.0, y + 1.25, cz]));
+  scene.add(clayBox(2.5, 0.55, 1.2, C.deskSide, {
+    roughness: 0.93, radius: 0.1, map: CLAY_MAP, pos: [cx, y + 0.4, cz]
   }));
-  [[-0.8, -0.7], [0.8, -0.7], [-0.8, 0.7], [0.8, 0.7]].forEach(([dx, dz]) => {
-    scene.add(box(0.4, 0.5, 0.4, C.chair, {
-      roughness: 0.55, rounded: true, map: WOOD_MAP, pos: [cx + dx, y + 0.3, cz + dz]
+  scene.add(clayBox(2.55, 0.12, 1.25, C.deskTop, {
+    roughness: 0.9, radius: 0.06, pos: [cx, y + 0.72, cz]
+  }));
+  [[-0.85, -0.75], [0.85, -0.75], [-0.85, 0.75], [0.85, 0.75]].forEach(([dx, dz]) => {
+    scene.add(clayBox(0.42, 0.48, 0.42, C.chair, {
+      roughness: 0.94, radius: 0.1, pos: [cx + dx, y + 0.28, cz + dz]
     }));
   });
-  scene.add(neonStrip(3.6, 0.04, 0.04, C.neonCyan, [cx, y + 2.55, cz - 1.7], 1.1));
-  scene.add(cssLabel("CONFERENCE", "room-badge", [cx, y + 2.75, cz]));
+  pendantAt(scene, cx, y + 2.5, cz);
+  scene.add(cssLabel("CONFERENCE", "room-badge clay", [cx, y + 2.75, cz]));
 }
 
-function buildBuilding(scene, mobile) {
+function buildBuilding(scene) {
   buildExterior(scene);
   for (let f = 1; f <= 3; f++) buildSlab(scene, f);
-  buildShellWalls(scene, mobile);
-  buildElevator(scene, mobile);
+  buildShellWalls(scene);
+  buildElevator(scene);
   buildStairs(scene);
   buildReception(scene);
-  buildConference(scene, mobile);
+  buildConference(scene);
   buildKitchen(scene);
   buildLounge(scene, 2, 5.2, 2.6);
-  buildServerRoom(scene, mobile);
+  buildServerRoom(scene);
   buildCafe(scene);
 
   addFloorBadge(scene, 3, "Engineering");
   addFloorBadge(scene, 2, "Markets");
   addFloorBadge(scene, 1, "Reception");
 
+  // Soft warm interior fills (no cyber neon point lights)
   [
-    { c: C.neonCyan, p: [0, fy(3) + 2.5, 0], i: 0.45 },
-    { c: C.neonAmber, p: [5, fy(2) + 2.2, -3], i: 0.5 },
-    { c: C.neonMagenta, p: [-2, fy(1) + 2.2, 0], i: 0.35 },
-    { c: C.neonRed, p: [5.5, fy(3) + 2.3, 2.5], i: 0.45 }
+    { c: C.warmLamp, p: [0, fy(3) + 2.4, 0], i: 0.28 },
+    { c: C.softGlow, p: [5, fy(2) + 2.1, -3], i: 0.3 },
+    { c: 0xffd0b0, p: [-2, fy(1) + 2.1, 0], i: 0.25 },
+    { c: C.cafeSign, p: [5.5, fy(3) + 2.2, 2.5], i: 0.22 }
   ].forEach(({ c, p, i }) => {
-    const pl = new THREE.PointLight(c, i, 14, 2);
+    const pl = new THREE.PointLight(c, i, 12, 2);
     pl.position.set(...p);
     scene.add(pl);
   });
@@ -642,10 +698,10 @@ const WAYPOINTS = {
 function setGlow(avatar, status) {
   const g = avatar.userData.glow;
   if (!g) return;
-  let color = 0x8a948c, intensity = 0.35;
-  if (status === "alert") { color = 0xd45a5a; intensity = 1.4; }
-  else if (status === "active" || status === "working") { color = 0x3d9a6a; intensity = 0.9; }
-  else if (status === "away") { color = 0x8bb8c9; intensity = 0.55; }
+  let color = 0xc4b8a8, intensity = 0.3;
+  if (status === "alert") { color = 0xe87860; intensity = 0.85; }
+  else if (status === "active" || status === "working") { color = 0x7a9e6e; intensity = 0.55; }
+  else if (status === "away") { color = 0x7eb8b0; intensity = 0.4; }
   g.material.color.setHex(color);
   g.material.emissive.setHex(color);
   g.material.emissiveIntensity = intensity;
@@ -752,11 +808,11 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.12;
   renderer.setClearColor(C.void, 1);
   if (renderer.capabilities.getMaxAnisotropy) {
     const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-    if (WOOD_MAP) WOOD_MAP.anisotropy = aniso;
+    if (CLAY_MAP) CLAY_MAP.anisotropy = aniso;
     if (FLOOR_MAP) FLOOR_MAP.anisotropy = aniso;
   }
 
@@ -770,22 +826,22 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(C.void);
-  scene.fog = new THREE.Fog(0xf3eee4, 52, 95);
+  scene.fog = new THREE.Fog(0xf5e6d4, 48, 90);
 
-  // PMREM studio environment for glass / wood reflections
+  // Soft studio env — low intensity so clay stays matte
   const pmrem = new THREE.PMREMGenerator(renderer);
   const envScene = new RoomEnvironment();
-  const envTex = pmrem.fromScene(envScene, 0.04).texture;
+  const envTex = pmrem.fromScene(envScene, 0.06).texture;
   scene.environment = envTex;
-  scene.environmentIntensity = mobile ? 0.55 : 0.85;
+  scene.environmentIntensity = mobile ? 0.22 : 0.32;
   envScene.dispose?.();
 
-  const camera = new THREE.PerspectiveCamera(36, iw / ih, 0.1, 160);
-  if (mobile) camera.position.set(20, 18, 22);
-  else camera.position.set(24, 20, 26);
+  const camera = new THREE.PerspectiveCamera(34, iw / ih, 0.1, 160);
+  if (mobile) camera.position.set(19, 17, 21);
+  else camera.position.set(22, 19, 24);
 
   const controls = new OrbitControls(camera, canvas);
-  controls.target.set(0, fy(2) + 0.5, 0);
+  controls.target.set(0, fy(2) + 0.4, 0);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.maxPolarAngle = Math.PI * 0.42;
@@ -796,11 +852,12 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
   controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
   controls.update();
 
-  scene.add(new THREE.AmbientLight(C.ambient, 0.55));
-  const hemi = new THREE.HemisphereLight(0xfff8ef, 0xd9c4a1, 0.55);
+  // Warm soft studio key + fill (no hard sun)
+  scene.add(new THREE.AmbientLight(C.ambient, 0.72));
+  const hemi = new THREE.HemisphereLight(0xfff4e8, 0xe8c8a0, 0.65);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(C.sun, 1.45);
-  sun.position.set(14, 28, 12);
+  const sun = new THREE.DirectionalLight(C.sun, 0.95);
+  sun.position.set(10, 22, 14);
   sun.castShadow = true;
   const shadowSize = mobile ? 1024 : 2048;
   sun.shadow.mapSize.set(shadowSize, shadowSize);
@@ -810,20 +867,20 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
   sun.shadow.camera.right = 28;
   sun.shadow.camera.top = 28;
   sun.shadow.camera.bottom = -28;
-  sun.shadow.bias = -0.00015;
-  sun.shadow.normalBias = 0.02;
-  sun.shadow.radius = mobile ? 2 : 4;
+  sun.shadow.bias = -0.0002;
+  sun.shadow.normalBias = 0.025;
+  sun.shadow.radius = mobile ? 3.5 : 6;
   scene.add(sun);
-  const fill = new THREE.DirectionalLight(0xe8f0f4, 0.4);
-  fill.position.set(-12, 14, -6);
+  const fill = new THREE.DirectionalLight(0xffe8d4, 0.45);
+  fill.position.set(-10, 12, -4);
   scene.add(fill);
-  const warm = new THREE.DirectionalLight(0xffe0c2, 0.32);
-  warm.position.set(6, 10, -8);
+  const warm = new THREE.DirectionalLight(0xffd8b0, 0.35);
+  warm.position.set(4, 8, -10);
   scene.add(warm);
 
-  buildBuilding(scene, mobile);
+  buildBuilding(scene);
   AGENTS.forEach(a => {
-    walnutDeskAt(scene, a.pos[0], fy(a.floor), a.pos[2]);
+    clayDeskAt(scene, a.pos[0], fy(a.floor), a.pos[2]);
   });
 
   const avatars = new Map();
@@ -849,15 +906,15 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
     });
   });
 
-  // Post stack — bloom + SMAA (ray-traced look without path tracer)
+  // Mild bloom only (warm lamps) — not cyber neon bloom
   const composer = new EffectComposer(renderer);
   const renderPass = new RenderPass(scene, camera);
   composer.addPass(renderPass);
   const bloom = new UnrealBloomPass(
     new THREE.Vector2(iw, ih),
-    mobile ? 0.22 : 0.38,
-    0.55,
-    0.72
+    mobile ? 0.1 : 0.16,
+    0.7,
+    0.82
   );
   composer.addPass(bloom);
   const smaa = new SMAAPass(iw * renderer.getPixelRatio(), ih * renderer.getPixelRatio());
@@ -865,7 +922,6 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
   const outputPass = new OutputPass();
   composer.addPass(outputPass);
 
-  // Optional path tracer (desktop)
   let pathTracer = null;
   let pathTracerReady = false;
   let pathTraceEnabled = false;
@@ -904,9 +960,9 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
       const mod = await import("three-gpu-pathtracer");
       const { WebGLPathTracer } = mod;
       pathTracer = new WebGLPathTracer(renderer);
-      pathTracer.bounces = 6;
-      pathTracer.transmissiveBounces = 4;
-      pathTracer.filterGlossyFactor = 0.5;
+      pathTracer.bounces = 5;
+      pathTracer.transmissiveBounces = 2;
+      pathTracer.filterGlossyFactor = 0.65;
       pathTracer.renderDelay = 40;
       pathTracer.minSamples = 1;
       pathTracer.fadeDuration = 200;
@@ -939,7 +995,7 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
       ready: pathTracerReady,
       error: pathTraceError ? String(pathTraceError.message || pathTraceError) : null,
       samples: pathTracer?.samples ?? 0,
-      mode: pathTraceEnabled ? (pathTracerReady ? "pathtrace" : "loading") : "pbr"
+      mode: pathTraceEnabled ? (pathTracerReady ? "pathtrace" : "loading") : "clay"
     };
   }
 
@@ -954,7 +1010,9 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
     if (!on) {
       pathTraceEnabled = false;
       freezeMotion = false;
-      renderer.toneMappingExposure = 1.05;
+      renderer.toneMappingExposure = 1.12;
+      bloom.strength = mobile ? 0.1 : 0.16;
+      scene.environmentIntensity = mobile ? 0.22 : 0.32;
       notifyRt();
       return getRayTraceInfo();
     }
@@ -969,10 +1027,9 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
     } catch (err) {
       pathTraceEnabled = false;
       freezeMotion = false;
-      // Soft fallback: boost bloom / env as "HQ glow" so toggle still feels better
-      bloom.strength = 0.55;
-      scene.environmentIntensity = 1.1;
-      renderer.toneMappingExposure = 1.12;
+      bloom.strength = 0.28;
+      scene.environmentIntensity = 0.45;
+      renderer.toneMappingExposure = 1.15;
       pathTraceError = err;
     }
     notifyRt();
@@ -1296,7 +1353,7 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
     avatars.forEach((av, id) => {
       const st = ai.get(id);
       if (st.mode === "desk" && st.deskStatus === "alert" && av.userData.glow) {
-        av.userData.glow.material.emissiveIntensity = 0.8 + Math.sin(now * 0.008) * 0.7;
+        av.userData.glow.material.emissiveIntensity = 0.55 + Math.sin(now * 0.008) * 0.35;
       }
     });
     controls.update();

@@ -1,6 +1,6 @@
 :root {
-  --bg: #f4f1ea;
-  --bg-soft: #ebe6dc;
+  --bg: #f5e6d4;
+  --bg-soft: #f0dcc8;
   --panel: rgba(255, 255, 255, 0.92);
   --panel-solid: #ffffff;
   --border: rgba(60, 80, 70, 0.14);
@@ -21,7 +21,7 @@
   --font: "DM Sans", "IBM Plex Sans", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   --radius: 14px;
-  --header-bg: rgba(244, 241, 234, 0.97);
+  --header-bg: rgba(245, 230, 212, 0.97);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --paper-h: 56px;
 }
@@ -600,30 +600,59 @@ button { font: inherit; cursor: pointer; }
 #view-dash .feed-sheet-proxy { display: none; }
 
 
-/* v0.4 — neon accents + chat feed */
+/* v0.7 — claymation chalky UI */
 .brand-mark {
-  box-shadow: 0 0 10px rgba(34, 211, 238, 0.45), 0 0 18px rgba(251, 191, 36, 0.25);
-  color: #0e7490;
+  background: linear-gradient(145deg, #e8a870, #e87860);
+  box-shadow: 0 6px 14px rgba(232, 120, 96, 0.28);
+  color: #fff;
+  border-radius: 12px;
 }
 .brand-title .ver {
-  background: linear-gradient(90deg, #22d3ee33, #e879f933);
-  border: 1px solid #22d3ee55;
-  border-radius: 6px;
-  padding: 1px 6px;
+  background: rgba(232, 168, 112, 0.28);
+  border: 1px solid rgba(232, 120, 96, 0.35);
+  border-radius: 999px;
+  padding: 1px 7px;
+  color: #a85a3a;
 }
-.label3d.neon-logo {
-  color: #0f766e;
-  font-weight: 700;
-  text-shadow: 0 0 8px rgba(34, 211, 238, 0.55), 0 0 14px rgba(251, 191, 36, 0.35);
-  background: rgba(255,255,255,0.72);
-  border: 1px solid rgba(34, 211, 238, 0.35);
+.label3d.clay, .label3d {
+  background: rgba(255, 248, 238, 0.92);
+  border: 1px solid rgba(180, 130, 90, 0.22);
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(140, 100, 60, 0.1);
+  color: #5a4030;
 }
-.feed-item.chat {
-  border-left: 3px solid #22d3ee;
-  background: linear-gradient(90deg, rgba(34,211,238,0.08), transparent);
+.label3d.chat {
+  background: #fff8ee;
+  border-color: rgba(232, 168, 112, 0.45);
+  box-shadow: 0 6px 16px rgba(232, 120, 96, 0.12);
 }
-.bubble3d {
+.bubble3d, .bubble3d.clay {
   max-width: min(240px, 70vw);
   white-space: normal;
   line-height: 1.25;
+  background: #fff8ee;
+  border: 1px solid rgba(200, 140, 90, 0.3);
+  color: #7a5040;
+  border-radius: 16px 16px 16px 6px;
+}
+.floor-badge.clay, .floor-badge {
+  background: #e8a870;
+  color: #5a3020;
+  border: 1px solid rgba(180, 100, 60, 0.25);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(180, 100, 60, 0.15);
+  letter-spacing: .03em;
+}
+.room-badge.clay, .room-badge {
+  background: rgba(90, 60, 40, 0.72);
+  border-radius: 10px;
+  letter-spacing: .06em;
+}
+.room-badge.clay-warm, .room-badge.neon-red {
+  background: rgba(232, 120, 96, 0.88);
+  box-shadow: 0 4px 12px rgba(232, 120, 96, 0.25);
+}
+.feed-item.chat {
+  border-left: 3px solid #e8a870;
+  background: linear-gradient(90deg, rgba(232,168,112,0.12), transparent);
 }
