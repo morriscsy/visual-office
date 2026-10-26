@@ -63,7 +63,7 @@ export function statusLabel(s) {
 }
 
 /** Floor slab Y (avatar feet) for floors 1..3 */
-export const FLOOR_Y = { 1: 0, 2: 3.55, 3: 7.1 };
+export const FLOOR_Y = { 1: 0, 2: 5.0, 3: 10.0 };
 
 export function deskSitOffset(agent) {
   const fy = FLOOR_Y[agent.floor] ?? 0;

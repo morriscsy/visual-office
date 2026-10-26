@@ -11,7 +11,7 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { AGENTS, statusLabel, FLOOR_Y, deskSitOffset } from "./agents.js";
 import { pickTopic, buildDialogue, buildPantryAside } from "./topics.js";
 
-/* v0.7 — Claymation / plasticine cutaway office (Magnific clay-animation look) */
+/* v0.7.1 — Claymation cutaway; taller floors (~1.4× story height) */
 
 const C = {
   exterior: 0xf2c9a0,
@@ -50,8 +50,8 @@ const C = {
   bookD: 0x8bb88a
 };
 
-const FH = 3.55;
-const WALL_H = 3.15;
+const FH = 5.0;
+const WALL_H = 4.55;
 const BW = 16;
 const BD = 12;
 const HALF_W = BW / 2;
@@ -442,11 +442,11 @@ function buildShellWalls(scene) {
     // Soft window cutouts (recessed clay, warm gradient feel)
     scene.add(clayBox(0.08, 1.0, 2.2, 0xf8e8d0, {
       roughness: 0.7, emissive: 0xffe8c8, emissiveIntensity: 0.25,
-      castShadow: false, pos: [-HALF_W + 0.12, y + 1.6, -2], radius: 0.04
+      castShadow: false, pos: [-HALF_W + 0.12, y + WALL_H * 0.5, -2], radius: 0.04
     }));
     scene.add(clayBox(0.08, 1.0, 2.2, 0xf8e8d0, {
       roughness: 0.7, emissive: 0xffe8c8, emissiveIntensity: 0.25,
-      castShadow: false, pos: [-HALF_W + 0.12, y + 1.6, 2], radius: 0.04
+      castShadow: false, pos: [-HALF_W + 0.12, y + WALL_H * 0.5, 2], radius: 0.04
     }));
     // Soft warm accent line (not neon)
     scene.add(softGlowBlob(BW - 0.8, 0.06, 0.06, C.softGlow,
@@ -495,16 +495,16 @@ function buildStairs(scene) {
   const sz = 3.2;
   for (let f = 1; f <= 2; f++) {
     const y0 = fy(f);
-    const steps = 8;
+    const steps = 12;
     for (let i = 0; i < steps; i++) {
       const t = i / steps;
-      scene.add(clayBox(1.45, 0.14, 0.45, C.desk, {
+      scene.add(clayBox(1.45, 0.14, 0.42, C.desk, {
         roughness: 0.93, radius: 0.05, map: CLAY_MAP,
-        pos: [sx, y0 + t * FH + 0.07, sz - i * 0.38]
+        pos: [sx, y0 + t * FH + 0.07, sz - i * 0.32]
       }));
     }
     scene.add(clayBox(0.1, FH * 0.9, 0.1, C.exteriorEdge, {
-      roughness: 0.92, radius: 0.04, pos: [sx + 0.78, y0 + FH * 0.45, sz - 1.4]
+      roughness: 0.92, radius: 0.04, pos: [sx + 0.78, y0 + FH * 0.45, sz - 1.8]
     }));
   }
 }
@@ -512,10 +512,10 @@ function buildStairs(scene) {
 function buildServerRoom(scene) {
   const y = fy(3);
   const cx = 5.4, cz = -3.4;
-  scene.add(clayPanel(4.2, 2.4, 0.1, [cx, y + 1.2, cz - 1.6]));
-  scene.add(clayPanel(4.2, 2.4, 0.1, [cx, y + 1.2, cz + 1.6]));
-  scene.add(clayPanel(0.1, 2.4, 3.2, [cx - 2.1, y + 1.2, cz]));
-  scene.add(clayPanel(0.1, 2.4, 3.2, [cx + 2.1, y + 1.2, cz]));
+  scene.add(clayPanel(4.2, 3.5, 0.1, [cx, y + 1.75, cz - 1.6]));
+  scene.add(clayPanel(4.2, 3.5, 0.1, [cx, y + 1.75, cz + 1.6]));
+  scene.add(clayPanel(0.1, 3.5, 3.2, [cx - 2.1, y + 1.75, cz]));
+  scene.add(clayPanel(0.1, 3.5, 3.2, [cx + 2.1, y + 1.75, cz]));
   [-0.7, 0.7].forEach((dx) => {
     scene.add(clayBox(0.75, 1.85, 0.6, C.server, {
       roughness: 0.9, radius: 0.08, pos: [cx + dx, y + 0.95, cz]
@@ -528,7 +528,7 @@ function buildServerRoom(scene) {
       }));
     }
   });
-  scene.add(cssLabel("SERVER ROOM", "room-badge clay", [cx, y + 2.7, cz]));
+  scene.add(cssLabel("SERVER ROOM", "room-badge clay", [cx, y + WALL_H * 0.72, cz]));
 }
 
 function buildCafe(scene) {
@@ -551,10 +551,10 @@ function buildCafe(scene) {
   // Soft clay cafe sign (replaces neon strip)
   scene.add(clayBox(1.6, 0.35, 0.12, C.cafeSign, {
     roughness: 0.9, emissive: C.cafeSign, emissiveIntensity: 0.35,
-    radius: 0.08, pos: [cx, y + 2.35, cz - 1.5]
+    radius: 0.08, pos: [cx, y + WALL_H * 0.68, cz - 1.5]
   }));
-  scene.add(cssLabel("CAFE", "room-badge clay-warm", [cx, y + 2.55, cz - 1.5]));
-  pendantAt(scene, cx, y + 2.5, cz);
+  scene.add(cssLabel("CAFE", "room-badge clay-warm", [cx, y + WALL_H * 0.72, cz - 1.5]));
+  pendantAt(scene, cx, y + WALL_H * 0.72, cz);
 }
 
 function buildKitchen(scene) {
@@ -581,9 +581,9 @@ function buildKitchen(scene) {
   scene.add(clayBox(0.9, 1.75, 0.75, C.fridge, {
     roughness: 0.88, radius: 0.1, pos: [cx + 1.55, y + 0.92, cz + 0.1]
   }));
-  pendantAt(scene, cx - 0.5, y + 2.4, cz);
-  pendantAt(scene, cx + 0.8, y + 2.4, cz);
-  scene.add(cssLabel("KITCHEN", "room-badge clay", [cx, y + 2.5, cz]));
+  pendantAt(scene, cx - 0.5, y + WALL_H * 0.7, cz);
+  pendantAt(scene, cx + 0.8, y + WALL_H * 0.7, cz);
+  scene.add(cssLabel("KITCHEN", "room-badge clay", [cx, y + WALL_H * 0.72, cz]));
 }
 
 function buildLounge(scene, floor, x, z) {
@@ -614,22 +614,22 @@ function buildReception(scene) {
   plantAt(scene, -5.4, y, 3.8, 1.0);
   // Wall art blobs
   scene.add(clayBox(0.55, 0.4, 0.06, 0xe87860, {
-    roughness: 0.92, castShadow: false, radius: 0.04, pos: [-2, y + 2.0, -HALF_D + 0.2]
+    roughness: 0.92, castShadow: false, radius: 0.04, pos: [-2, y + WALL_H * 0.55, -HALF_D + 0.2]
   }));
   scene.add(clayBox(0.4, 0.5, 0.06, 0x7eb8b0, {
-    roughness: 0.92, castShadow: false, radius: 0.04, pos: [-1.2, y + 2.05, -HALF_D + 0.2]
+    roughness: 0.92, castShadow: false, radius: 0.04, pos: [-1.2, y + WALL_H * 0.58, -HALF_D + 0.2]
   }));
-  pendantAt(scene, 0.3, y + 2.6, 1.5);
+  pendantAt(scene, 0.3, y + WALL_H * 0.72, 1.5);
 }
 
 function buildConference(scene) {
   initTextures();
   const y = fy(1);
   const cx = 5.2, cz = -2.8;
-  scene.add(clayPanel(4.0, 2.5, 0.1, [cx, y + 1.25, cz - 1.7]));
-  scene.add(clayPanel(4.0, 2.5, 0.1, [cx, y + 1.25, cz + 1.7]));
-  scene.add(clayPanel(0.1, 2.5, 3.4, [cx - 2.0, y + 1.25, cz]));
-  scene.add(clayPanel(0.1, 2.5, 3.4, [cx + 2.0, y + 1.25, cz]));
+  scene.add(clayPanel(4.0, 3.6, 0.1, [cx, y + 1.8, cz - 1.7]));
+  scene.add(clayPanel(4.0, 3.6, 0.1, [cx, y + 1.8, cz + 1.7]));
+  scene.add(clayPanel(0.1, 3.6, 3.4, [cx - 2.0, y + 1.8, cz]));
+  scene.add(clayPanel(0.1, 3.6, 3.4, [cx + 2.0, y + 1.8, cz]));
   scene.add(clayBox(2.5, 0.55, 1.2, C.deskSide, {
     roughness: 0.93, radius: 0.1, map: CLAY_MAP, pos: [cx, y + 0.4, cz]
   }));
@@ -641,8 +641,8 @@ function buildConference(scene) {
       roughness: 0.94, radius: 0.1, pos: [cx + dx, y + 0.28, cz + dz]
     }));
   });
-  pendantAt(scene, cx, y + 2.5, cz);
-  scene.add(cssLabel("CONFERENCE", "room-badge clay", [cx, y + 2.75, cz]));
+  pendantAt(scene, cx, y + WALL_H * 0.72, cz);
+  scene.add(cssLabel("CONFERENCE", "room-badge clay", [cx, y + WALL_H * 0.78, cz]));
 }
 
 function buildBuilding(scene) {
@@ -664,10 +664,10 @@ function buildBuilding(scene) {
 
   // Soft warm interior fills (no cyber neon point lights)
   [
-    { c: C.warmLamp, p: [0, fy(3) + 2.4, 0], i: 0.28 },
-    { c: C.softGlow, p: [5, fy(2) + 2.1, -3], i: 0.3 },
-    { c: 0xffd0b0, p: [-2, fy(1) + 2.1, 0], i: 0.25 },
-    { c: C.cafeSign, p: [5.5, fy(3) + 2.2, 2.5], i: 0.22 }
+    { c: C.warmLamp, p: [0, fy(3) + WALL_H * 0.7, 0], i: 0.28 },
+    { c: C.softGlow, p: [5, fy(2) + WALL_H * 0.62, -3], i: 0.3 },
+    { c: 0xffd0b0, p: [-2, fy(1) + WALL_H * 0.62, 0], i: 0.25 },
+    { c: C.cafeSign, p: [5.5, fy(3) + WALL_H * 0.65, 2.5], i: 0.22 }
   ].forEach(({ c, p, i }) => {
     const pl = new THREE.PointLight(c, i, 12, 2);
     pl.position.set(...p);
@@ -836,18 +836,18 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
   scene.environmentIntensity = mobile ? 0.22 : 0.32;
   envScene.dispose?.();
 
-  const camera = new THREE.PerspectiveCamera(34, iw / ih, 0.1, 160);
-  if (mobile) camera.position.set(19, 17, 21);
-  else camera.position.set(22, 19, 24);
+  const camera = new THREE.PerspectiveCamera(34, iw / ih, 0.1, 200);
+  if (mobile) camera.position.set(22, 23, 25);
+  else camera.position.set(26, 27, 29);
 
   const controls = new OrbitControls(camera, canvas);
-  controls.target.set(0, fy(2) + 0.4, 0);
+  controls.target.set(0, fy(2) + 0.5, 0);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.maxPolarAngle = Math.PI * 0.42;
   controls.minPolarAngle = Math.PI * 0.18;
-  controls.minDistance = 14;
-  controls.maxDistance = 48;
+  controls.minDistance = 16;
+  controls.maxDistance = 58;
   controls.enablePan = true;
   controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
   controls.update();
@@ -857,25 +857,25 @@ export function createOffice3D({ canvas, container, onSelect, getStatus, onChat 
   const hemi = new THREE.HemisphereLight(0xfff4e8, 0xe8c8a0, 0.65);
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(C.sun, 0.95);
-  sun.position.set(10, 22, 14);
+  sun.position.set(12, 32, 16);
   sun.castShadow = true;
   const shadowSize = mobile ? 1024 : 2048;
   sun.shadow.mapSize.set(shadowSize, shadowSize);
   sun.shadow.camera.near = 2;
-  sun.shadow.camera.far = 70;
-  sun.shadow.camera.left = -28;
-  sun.shadow.camera.right = 28;
-  sun.shadow.camera.top = 28;
-  sun.shadow.camera.bottom = -28;
+  sun.shadow.camera.far = 95;
+  sun.shadow.camera.left = -36;
+  sun.shadow.camera.right = 36;
+  sun.shadow.camera.top = 36;
+  sun.shadow.camera.bottom = -36;
   sun.shadow.bias = -0.0002;
   sun.shadow.normalBias = 0.025;
   sun.shadow.radius = mobile ? 3.5 : 6;
   scene.add(sun);
   const fill = new THREE.DirectionalLight(0xffe8d4, 0.45);
-  fill.position.set(-10, 12, -4);
+  fill.position.set(-10, 18, -4);
   scene.add(fill);
   const warm = new THREE.DirectionalLight(0xffd8b0, 0.35);
-  warm.position.set(4, 8, -10);
+  warm.position.set(4, 14, -10);
   scene.add(warm);
 
   buildBuilding(scene);

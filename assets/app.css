@@ -600,7 +600,7 @@ button { font: inherit; cursor: pointer; }
 #view-dash .feed-sheet-proxy { display: none; }
 
 
-/* v0.7 — claymation chalky UI */
+/* v0.7.1 — claymation chalky UI */
 .brand-mark {
   background: linear-gradient(145deg, #e8a870, #e87860);
   box-shadow: 0 6px 14px rgba(232, 120, 96, 0.28);
