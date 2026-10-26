@@ -528,3 +528,32 @@ button { font: inherit; cursor: pointer; }
 
 /* When dash feed sheet open on mobile, use feed-sheet from 3d pattern inside dash */
 #view-dash .feed-sheet-proxy { display: none; }
+
+
+/* v0.4 — neon accents + chat feed */
+.brand-mark {
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.45), 0 0 18px rgba(251, 191, 36, 0.25);
+  color: #0e7490;
+}
+.brand-title .ver {
+  background: linear-gradient(90deg, #22d3ee33, #e879f933);
+  border: 1px solid #22d3ee55;
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+.label3d.neon-logo {
+  color: #0f766e;
+  font-weight: 700;
+  text-shadow: 0 0 8px rgba(34, 211, 238, 0.55), 0 0 14px rgba(251, 191, 36, 0.35);
+  background: rgba(255,255,255,0.72);
+  border: 1px solid rgba(34, 211, 238, 0.35);
+}
+.feed-item.chat {
+  border-left: 3px solid #22d3ee;
+  background: linear-gradient(90deg, rgba(34,211,238,0.08), transparent);
+}
+.bubble3d {
+  max-width: min(240px, 70vw);
+  white-space: normal;
+  line-height: 1.25;
+}

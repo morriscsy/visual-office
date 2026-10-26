@@ -2,18 +2,24 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import { AGENTS, statusLabel } from "./agents.js";
+import { pickTopic, buildDialogue, buildPantryAside } from "./topics.js";
 
-/* Swedish / Scandinavian palette */
+/* Swedish light base + cozy walnut furniture + subtle neon accents */
 const C = {
-  floor: 0xd9c4a1,       // light oak
+  floor: 0xd9c4a1,       // light oak (keep bright)
   floorEdge: 0xc4a574,
   wall: 0xf7f4ed,        // off-white
   wallAccent: 0xe8efe9,  // soft sage wash
-  desk: 0xe8dcc8,
-  deskLeg: 0xb89a6e,
+  desk: 0x5c4033,        // walnut
+  deskTop: 0x6b4423,     // warmer walnut top
+  deskGrain: 0x8a6239,   // lighter grain highlight
+  deskLeg: 0x4a3224,
+  chair: 0x6b5344,
+  chairBack: 0x5a4436,
+  shelf: 0x5c4033,
   monitor: 0xdfe6e2,
   screen: 0x8bb8c9,
-  plantPot: 0xc4a574,
+  plantPot: 0x6b4423,
   plant: 0x7d9b8a,
   toilet: 0xeef2f0,
   pantry: 0xf0ebe3,
@@ -22,7 +28,10 @@ const C = {
   glass: 0xd5e4e8,
   ambient: 0xfff6ea,
   sun: 0xfff2d6,
-  sky: 0xd9e8ee
+  sky: 0xd9e8ee,
+  neonCyan: 0x22d3ee,
+  neonMagenta: 0xe879f9,
+  neonAmber: 0xfbbf24
 };
 
 const WAYPOINTS = {
@@ -33,24 +42,34 @@ const WAYPOINTS = {
   hallC: new THREE.Vector3(4, 0, -4)
 };
 
-const CHAT_LINES = [
-  "☕ 茶水間見？", "📊 看過 print 了嗎", "稍休息一下",
-  "這個 setup 怎樣？", "回來再對一下", "OK 同步一下"
-];
-
 function box(w, h, d, color, opts = {}) {
   const geo = new THREE.BoxGeometry(w, h, d);
   const mat = new THREE.MeshStandardMaterial({
     color,
     roughness: opts.roughness ?? 0.75,
     metalness: opts.metalness ?? 0.05,
-    transparent: !!opts.opacity,
+    emissive: opts.emissive != null ? opts.emissive : 0x000000,
+    emissiveIntensity: opts.emissiveIntensity ?? 0,
+    transparent: opts.opacity != null && opts.opacity < 1,
     opacity: opts.opacity ?? 1
   });
   const m = new THREE.Mesh(geo, mat);
-  m.castShadow = true;
-  m.receiveShadow = true;
+  m.castShadow = opts.castShadow !== false;
+  m.receiveShadow = opts.receiveShadow !== false;
   if (opts.pos) m.position.set(...opts.pos);
+  return m;
+}
+
+function neonStrip(w, h, d, color, pos, intensity = 1.1) {
+  const m = box(w, h, d, color, {
+    roughness: 0.35,
+    metalness: 0.2,
+    emissive: color,
+    emissiveIntensity: intensity,
+    castShadow: false,
+    receiveShadow: false,
+    pos
+  });
   return m;
 }
 
@@ -81,7 +100,6 @@ function makeAvatar(agent) {
   g.userData.glow = glow;
   g.userData.body = body;
 
-  // bob legs illusion
   const legL = box(0.14, 0.45, 0.18, 0x5a6a62, { roughness: 0.8 });
   legL.position.set(-0.14, 0.22, 0);
   const legR = box(0.14, 0.45, 0.18, 0x5a6a62, { roughness: 0.8 });
@@ -108,41 +126,87 @@ function makeAvatar(agent) {
   return g;
 }
 
+function walnutTable(scene, w, d, x, z, y = 0.72) {
+  // top with subtle grain strip
+  scene.add(box(w, 0.1, d, C.deskTop, { roughness: 0.45, pos: [x, y, z] }));
+  scene.add(box(w * 0.92, 0.015, 0.04, C.deskGrain, {
+    roughness: 0.55, castShadow: false, pos: [x, y + 0.055, z]
+  }));
+  const inset = Math.min(w, d) * 0.38;
+  [[-inset, -d * 0.35], [inset, -d * 0.35], [-inset, d * 0.35], [inset, d * 0.35]].forEach(([dx, dz]) => {
+    scene.add(box(0.1, y - 0.02, 0.1, C.deskLeg, { roughness: 0.6, pos: [x + dx, (y - 0.02) / 2, z + dz] }));
+  });
+}
+
+function walnutShelf(scene, x, z) {
+  scene.add(box(1.4, 1.6, 0.28, C.shelf, { roughness: 0.55, pos: [x, 0.9, z] }));
+  for (let i = 0; i < 3; i++) {
+    scene.add(box(1.28, 0.04, 0.24, C.deskGrain, {
+      roughness: 0.5, castShadow: false, pos: [x, 0.4 + i * 0.4, z + 0.02]
+    }));
+  }
+}
+
 function buildRoom(scene) {
-  // Floor — light oak
+  // Floor — light oak (Swedish bright base)
   const floor = box(28, 0.18, 26, C.floor, { roughness: 0.85 });
   floor.position.y = -0.09;
   scene.add(floor);
 
-  // Subtle floor planks
   for (let i = -12; i <= 12; i += 2) {
-    const plank = box(0.04, 0.02, 24, C.floorEdge, { roughness: 0.9 });
+    const plank = box(0.04, 0.02, 24, C.floorEdge, { roughness: 0.9, castShadow: false });
     plank.position.set(i, 0.01, 0);
-    plank.castShadow = false;
     scene.add(plank);
   }
 
-  // Outer walls (low so we see inside)
   const wallH = 3.2;
-  const walls = [
+  [
     box(28, wallH, 0.2, C.wall, { pos: [0, wallH / 2, -13] }),
     box(28, wallH, 0.2, C.wallAccent, { pos: [0, wallH / 2, 13] }),
     box(0.2, wallH, 26, C.wall, { pos: [-14, wallH / 2, 0] }),
     box(0.2, wallH, 26, C.wallAccent, { pos: [14, wallH / 2, 0] })
-  ];
-  walls.forEach(w => scene.add(w));
+  ].forEach(w => scene.add(w));
 
-  // Glass partitions (soft)
+  // Neon cove strips along wall tops (cozy-modern, not cyberpunk)
+  scene.add(neonStrip(26, 0.06, 0.06, C.neonCyan, [0, wallH - 0.15, -12.85], 1.25));
+  scene.add(neonStrip(26, 0.06, 0.06, C.neonAmber, [0, wallH - 0.15, 12.85], 0.95));
+  scene.add(neonStrip(0.06, 0.06, 24, C.neonMagenta, [-13.85, wallH - 0.15, 0], 0.85));
+  scene.add(neonStrip(0.06, 0.06, 24, C.neonCyan, [13.85, wallH - 0.15, 0], 0.9));
+
+  // Soft neon point lights
+  const neonPts = [
+    { c: C.neonCyan, p: [0, 2.8, -12], i: 0.55 },
+    { c: C.neonAmber, p: [11, 2.4, -10], i: 0.45 },
+    { c: C.neonMagenta, p: [9, 2.4, 1], i: 0.4 },
+    { c: C.neonCyan, p: [-9, 2.4, 0], i: 0.35 }
+  ];
+  neonPts.forEach(({ c, p, i }) => {
+    const pl = new THREE.PointLight(c, i, 10, 2);
+    pl.position.set(...p);
+    scene.add(pl);
+  });
+
   const glassMat = { roughness: 0.2, metalness: 0.1, opacity: 0.28 };
   scene.add(box(0.12, 2.4, 8, C.glass, { ...glassMat, pos: [-5, 1.2, -6] }));
   scene.add(box(0.12, 2.4, 8, C.glass, { ...glassMat, pos: [5, 1.2, -6] }));
   scene.add(box(10, 2.4, 0.12, C.glass, { ...glassMat, pos: [0, 1.2, -2] }));
+  // neon edge on glass rails
+  scene.add(neonStrip(0.04, 0.04, 7.5, C.neonCyan, [-5, 2.45, -6], 0.7));
+  scene.add(neonStrip(0.04, 0.04, 7.5, C.neonMagenta, [5, 2.45, -6], 0.65));
 
-  // Boss meeting table
-  scene.add(box(3.2, 0.12, 1.6, C.desk, { roughness: 0.55, pos: [0, 0.72, -10] }));
-  [[-1.2, -10.5], [1.2, -10.5], [-1.2, -9.5], [1.2, -9.5]].forEach(([x, z]) => {
-    scene.add(box(0.12, 0.7, 0.12, C.deskLeg, { pos: [x, 0.35, z] }));
-  });
+  // Boss walnut meeting table + neon logo strip
+  walnutTable(scene, 3.2, 1.6, 0, -10);
+  scene.add(neonStrip(1.2, 0.05, 0.05, C.neonAmber, [0, 0.82, -10], 1.4));
+  const logo = document.createElement("div");
+  logo.className = "label3d neon-logo";
+  logo.textContent = "▣ Morris Desk";
+  const logoObj = new CSS2DObject(logo);
+  logoObj.position.set(0, 2.6, -12.2);
+  scene.add(logoObj);
+
+  // Walnut shelves near strategy / charts
+  walnutShelf(scene, -1.5, 10.5);
+  walnutShelf(scene, 11.5, 8);
 
   // Toilet room (NW)
   scene.add(box(4.2, 2.6, 0.15, C.toilet, { pos: [-11, 1.3, -11.5] }));
@@ -154,10 +218,9 @@ function buildRoom(scene) {
   const toiletLabel = new CSS2DObject(toiletSign);
   toiletLabel.position.set(-11, 2.8, -10);
   scene.add(toiletLabel);
-  // fixture
   scene.add(box(0.7, 0.55, 0.55, 0xffffff, { roughness: 0.35, pos: [-11, 0.3, -10.5] }));
 
-  // Pantry (NE)
+  // Pantry (NE) — walnut counter + amber neon
   scene.add(box(4.2, 2.6, 0.15, C.pantry, { pos: [11, 1.3, -11.5] }));
   scene.add(box(0.15, 2.6, 3.5, C.pantry, { pos: [9, 1.3, -10] }));
   scene.add(box(0.15, 2.6, 3.5, C.pantry, { pos: [13, 1.3, -10] }));
@@ -167,11 +230,13 @@ function buildRoom(scene) {
   const pantryLabel = new CSS2DObject(pantrySign);
   pantryLabel.position.set(11, 2.8, -10);
   scene.add(pantryLabel);
-  scene.add(box(1.8, 0.9, 0.6, C.desk, { pos: [11, 0.45, -10.2] }));
+  scene.add(box(1.8, 0.9, 0.6, C.deskTop, { roughness: 0.5, pos: [11, 0.45, -10.2] }));
+  scene.add(box(1.6, 0.03, 0.5, C.deskGrain, { castShadow: false, pos: [11, 0.92, -10.2] }));
   scene.add(box(0.35, 0.45, 0.35, C.coffee, { pos: [10.5, 1.05, -10.2] }));
   scene.add(box(0.25, 0.35, 0.25, 0x8bb8c9, { pos: [11.3, 1.0, -10.2] }));
+  scene.add(neonStrip(1.6, 0.04, 0.04, C.neonAmber, [11, 1.35, -11.35], 1.15));
 
-  // Plants
+  // Plants in walnut pots
   [[-12, 10], [12, 10], [-6, -12], [6, -12]].forEach(([x, z]) => {
     scene.add(box(0.4, 0.35, 0.4, C.plantPot, { pos: [x, 0.18, z] }));
     const foliage = new THREE.Mesh(
@@ -183,22 +248,32 @@ function buildRoom(scene) {
     scene.add(foliage);
   });
 
-  // Soft area carpet under charts wing
   scene.add(box(8, 0.04, 10, C.carpet, { roughness: 1, pos: [9, 0.02, 1] }));
+  // charts-wing neon rail
+  scene.add(neonStrip(7.5, 0.04, 0.04, C.neonMagenta, [9, 0.08, -4.2], 0.8));
 }
 
 function buildDesk(scene, agent) {
   const [x, , z] = agent.pos;
-  const desk = box(1.6, 0.1, 0.85, C.desk, { roughness: 0.55, pos: [x, 0.72, z] });
-  scene.add(desk);
+  // walnut desk + grain highlight
+  scene.add(box(1.6, 0.1, 0.85, C.deskTop, { roughness: 0.48, pos: [x, 0.72, z] }));
+  scene.add(box(1.4, 0.015, 0.05, C.deskGrain, {
+    roughness: 0.55, castShadow: false, pos: [x, 0.78, z]
+  }));
   [[-0.65, -0.3], [0.65, -0.3], [-0.65, 0.3], [0.65, 0.3]].forEach(([dx, dz]) => {
-    scene.add(box(0.1, 0.7, 0.1, C.deskLeg, { pos: [x + dx, 0.35, z + dz] }));
+    scene.add(box(0.1, 0.7, 0.1, C.deskLeg, { roughness: 0.6, pos: [x + dx, 0.35, z + dz] }));
   });
   scene.add(box(0.7, 0.45, 0.06, C.monitor, { pos: [x, 1.1, z - 0.28] }));
-  scene.add(box(0.58, 0.34, 0.02, C.screen, { roughness: 0.3, metalness: 0.2, pos: [x, 1.1, z - 0.24] }));
-  // chair
-  scene.add(box(0.55, 0.08, 0.55, 0xd5cfc4, { pos: [x, 0.48, z + 0.7] }));
-  scene.add(box(0.55, 0.55, 0.08, 0xcfc7ba, { pos: [x, 0.8, z + 0.95] }));
+  // soft neon screen glow
+  scene.add(box(0.58, 0.34, 0.02, C.screen, {
+    roughness: 0.3, metalness: 0.2,
+    emissive: C.neonCyan, emissiveIntensity: 0.25,
+    pos: [x, 1.1, z - 0.24]
+  }));
+  // walnut chair
+  scene.add(box(0.55, 0.08, 0.55, C.chair, { roughness: 0.65, pos: [x, 0.48, z + 0.7] }));
+  scene.add(box(0.55, 0.55, 0.08, C.chairBack, { roughness: 0.65, pos: [x, 0.8, z + 0.95] }));
+  scene.add(box(0.08, 0.45, 0.08, C.deskLeg, { pos: [x, 0.25, z + 0.7] }));
 }
 
 function setGlow(avatar, status) {
@@ -215,31 +290,30 @@ function setGlow(avatar, status) {
 
 function pickWanderTarget(selfId, avatars) {
   const roll = Math.random();
-  if (roll < 0.34) return { type: "toilet", pos: WAYPOINTS.toilet.clone(), label: "away · 洗手間" };
-  if (roll < 0.68) return { type: "pantry", pos: WAYPOINTS.pantry.clone(), label: "away · 茶水間" };
-  // chat with another bot
+  if (roll < 0.30) return { type: "toilet", pos: WAYPOINTS.toilet.clone(), label: "away · 洗手間" };
+  if (roll < 0.58) return { type: "pantry", pos: WAYPOINTS.pantry.clone(), label: "away · 茶水間" };
   const others = AGENTS.filter(a => a.id !== selfId);
   const partner = others[Math.floor(Math.random() * others.length)];
   const partnerAv = avatars.get(partner.id);
   const meet = partnerAv.position.clone();
-  // meet halfway toward partner's desk, offset so they don't overlap
   const selfDesk = new THREE.Vector3(...AGENTS.find(a => a.id === selfId).pos);
   const mid = selfDesk.clone().lerp(new THREE.Vector3(...partner.pos), 0.5);
   mid.x += (Math.random() - 0.5) * 1.2;
   mid.z += (Math.random() - 0.5) * 1.2;
   mid.y = 0;
+  const dialogue = buildDialogue(selfId, partner.id, pickTopic());
   return {
     type: "chat",
     pos: mid,
     partnerId: partner.id,
     partnerPos: meet,
     label: "away · 聊天",
-    line: CHAT_LINES[Math.floor(Math.random() * CHAT_LINES.length)]
+    dialogue,
+    line: dialogue.lines[0].text
   };
 }
 
-
-export function createOffice3D({ canvas, container, onSelect, getStatus }) {
+export function createOffice3D({ canvas, container, onSelect, getStatus, onChat }) {
   const host = container || canvas.parentElement;
 
   function measure() {
@@ -273,7 +347,7 @@ export function createOffice3D({ canvas, container, onSelect, getStatus }) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.2;
+  renderer.toneMappingExposure = 1.15;
   renderer.setClearColor(C.sky, 1);
 
   const labelRenderer = new CSS2DRenderer();
@@ -289,7 +363,6 @@ export function createOffice3D({ canvas, container, onSelect, getStatus }) {
   scene.fog = new THREE.Fog(0xd9e8ee, 30, 60);
 
   const camera = new THREE.PerspectiveCamera(42, iw / ih, 0.1, 120);
-  // Slightly higher / closer for mobile portrait
   if (mobile) camera.position.set(14, 16, 16);
   else camera.position.set(16, 14, 18);
 
@@ -304,11 +377,11 @@ export function createOffice3D({ canvas, container, onSelect, getStatus }) {
   controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
   controls.update();
 
-  // Soft Nordic daylight
-  scene.add(new THREE.AmbientLight(C.ambient, 0.9));
-  const hemi = new THREE.HemisphereLight(0xeaf4f8, 0xd9c4a1, 0.6);
+  // Soft Nordic daylight (keep bright) + warm fill for walnut
+  scene.add(new THREE.AmbientLight(C.ambient, 0.88));
+  const hemi = new THREE.HemisphereLight(0xeaf4f8, 0xd9c4a1, 0.55);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(C.sun, 1.2);
+  const sun = new THREE.DirectionalLight(C.sun, 1.15);
   sun.position.set(12, 22, 8);
   sun.castShadow = true;
   const shadowSize = mobile ? 512 : 1024;
@@ -321,9 +394,12 @@ export function createOffice3D({ canvas, container, onSelect, getStatus }) {
   sun.shadow.camera.bottom = -20;
   sun.shadow.bias = -0.0002;
   scene.add(sun);
-  const fill = new THREE.DirectionalLight(0xcfe4ec, 0.4);
+  const fill = new THREE.DirectionalLight(0xcfe4ec, 0.38);
   fill.position.set(-10, 10, -8);
   scene.add(fill);
+  const warm = new THREE.DirectionalLight(0xffe0c2, 0.22);
+  warm.position.set(4, 8, -6);
+  scene.add(warm);
 
   buildRoom(scene);
   AGENTS.forEach(a => buildDesk(scene, a));
@@ -344,7 +420,8 @@ export function createOffice3D({ canvas, container, onSelect, getStatus }) {
       nextWanderAt: performance.now() + 4000 + i * 2200 + Math.random() * 8000,
       lingerUntil: 0,
       trip: null,
-      deskStatus: "idle"
+      deskStatus: "idle",
+      bubbleTimer: null
     });
   });
 
@@ -359,7 +436,6 @@ export function createOffice3D({ canvas, container, onSelect, getStatus }) {
     labelRenderer.setSize(w, h);
   }
 
-  // Robust size: ResizeObserver + visualViewport + delayed retries (iOS Safari)
   let ro = null;
   if (typeof ResizeObserver !== "undefined") {
     ro = new ResizeObserver(() => resize());
@@ -370,7 +446,6 @@ export function createOffice3D({ canvas, container, onSelect, getStatus }) {
     window.visualViewport.addEventListener("resize", resize);
     window.visualViewport.addEventListener("scroll", resize);
   }
-  // Layout may not be ready on first paint
   requestAnimationFrame(() => {
     resize();
     requestAnimationFrame(resize);
@@ -393,6 +468,63 @@ export function createOffice3D({ canvas, container, onSelect, getStatus }) {
     if (obj?.userData.agentId) onSelect?.(obj.userData.agentId);
   });
 
+  function clearBubbleTimer(state) {
+    if (state.bubbleTimer) {
+      clearTimeout(state.bubbleTimer);
+      state.bubbleTimer = null;
+    }
+  }
+
+  function showBubble(av, text, ms = 4200) {
+    const el = av.userData.bubbleEl;
+    if (!el) return;
+    el.textContent = text;
+    el.style.display = "block";
+    const state = ai.get(av.userData.agentId);
+    if (state) {
+      clearBubbleTimer(state);
+      state.bubbleTimer = setTimeout(() => {
+        el.style.display = "none";
+        state.bubbleTimer = null;
+      }, ms);
+    }
+  }
+
+  function emitChat(dialogue, zoneLabel) {
+    if (!dialogue?.lines?.length) return;
+    const topic = dialogue.topic;
+    const text = dialogue.lines.map(l => {
+      const name = AGENTS.find(a => a.id === l.id)?.name || l.id;
+      return `${name}: ${l.text}`;
+    }).join(" · ");
+    onChat?.({
+      from: "茶水間對話",
+      zone: zoneLabel || "聊天區",
+      text: `💬 ${topic?.title || "Topic"} — ${text}`,
+      at: new Date().toISOString(),
+      level: "chat",
+      topicId: topic?.id
+    });
+  }
+
+  function startTopicChat(idA, idB, zoneLabel) {
+    const dialogue = buildDialogue(idA, idB, pickTopic());
+    const avA = avatars.get(idA);
+    const avB = avatars.get(idB);
+    if (avA && dialogue.lines[0]) showBubble(avA, dialogue.lines[0].text, 5000);
+    if (avB && dialogue.lines[1]) {
+      const stB = ai.get(idB);
+      if (stB) {
+        clearBubbleTimer(stB);
+        stB.bubbleTimer = setTimeout(() => {
+          showBubble(avB, dialogue.lines[1].text, 5000);
+        }, 1600);
+      }
+    }
+    emitChat(dialogue, zoneLabel);
+    return dialogue;
+  }
+
   function updateStatusVisuals() {
     const st = getStatus?.() || {};
     const byId = {};
@@ -406,7 +538,7 @@ export function createOffice3D({ canvas, container, onSelect, getStatus }) {
       const el = av.userData.labelEl;
       if (!el) return;
       el.classList.toggle("away", state.mode !== "desk");
-      el.classList.toggle("chat", state.mode === "linger" && state.trip?.type === "chat");
+      el.classList.toggle("chat", state.mode === "linger" && (state.trip?.type === "chat" || state.trip?.type === "pantry"));
       if (state.mode === "desk") el.textContent = AGENTS.find(a => a.id === id).name;
       else if (state.trip?.label) el.textContent = `${AGENTS.find(a => a.id === id).name} · ${state.trip.label.replace("away · ", "")}`;
     });
@@ -434,7 +566,7 @@ export function createOffice3D({ canvas, container, onSelect, getStatus }) {
     av.userData.bubbleEl.style.display = "none";
   }
 
-  function beginReturn(id, now) {
+  function beginReturn(id) {
     const state = ai.get(id);
     const av = avatars.get(id);
     const agent = AGENTS.find(a => a.id === id);
@@ -447,13 +579,69 @@ export function createOffice3D({ canvas, container, onSelect, getStatus }) {
     av.userData.bubbleEl.style.display = "none";
   }
 
+  function onArriveLinger(id, now) {
+    const state = ai.get(id);
+    const av = avatars.get(id);
+    state.mode = "linger";
+    const isChat = state.trip?.type === "chat";
+    const isPantry = state.trip?.type === "pantry";
+    state.lingerUntil = now + (isChat ? 6500 + Math.random() * 2500 : 3500 + Math.random() * 3000);
+
+    if (isChat && state.trip.dialogue) {
+      const d = state.trip.dialogue;
+      showBubble(av, d.lines[0]?.text || state.trip.line, 5200);
+      emitChat(d, "聊天區");
+      const partnerState = ai.get(state.trip.partnerId);
+      const partnerAv = avatars.get(state.trip.partnerId);
+      if (partnerState && partnerState.mode === "desk" && partnerAv) {
+        const meet = state.trip.pos.clone();
+        meet.x += 0.7;
+        partnerState.mode = "walk";
+        partnerState.path = [partnerAv.position.clone(), meet];
+        partnerState.pathIdx = 1;
+        partnerState.trip = {
+          type: "chat",
+          label: "away · 聊天",
+          partnerId: id,
+          dialogue: d,
+          line: d.lines[1]?.text || "👍",
+          isPartner: true
+        };
+        partnerState.nextWanderAt = now + 20000;
+      } else if (partnerAv && d.lines[1]) {
+        setTimeout(() => showBubble(partnerAv, d.lines[1].text, 5000), 1500);
+      }
+    } else if (isPantry) {
+      // Chat with whoever else is already lingering at pantry
+      let partnerId = null;
+      ai.forEach((s, oid) => {
+        if (oid !== id && s.mode === "linger" && s.trip?.type === "pantry") partnerId = oid;
+      });
+      if (partnerId) {
+        startTopicChat(id, partnerId, "茶水間");
+      } else {
+        const topic = pickTopic();
+        const line = buildPantryAside(id, topic);
+        showBubble(av, line, 4500);
+        onChat?.({
+          from: AGENTS.find(a => a.id === id)?.name || id,
+          zone: "茶水間",
+          text: `☕ ${topic.title} — ${line}`,
+          at: new Date().toISOString(),
+          level: "chat",
+          topicId: topic.id
+        });
+      }
+    }
+  }
+
   function stepAI(dt, now) {
     avatars.forEach((av, id) => {
       const state = ai.get(id);
       if (state.mode === "desk" && now >= state.nextWanderAt) startWander(id, now);
 
       if (state.mode === "linger") {
-        if (now >= state.lingerUntil) beginReturn(id, now);
+        if (now >= state.lingerUntil) beginReturn(id);
         return;
       }
 
@@ -468,22 +656,12 @@ export function createOffice3D({ canvas, container, onSelect, getStatus }) {
           state.pathIdx++;
           if (state.pathIdx >= state.path.length) {
             if (state.mode === "walk") {
-              state.mode = "linger";
-              state.lingerUntil = now + (state.trip?.type === "chat" ? 4500 + Math.random() * 2500 : 3500 + Math.random() * 3000);
-              if (state.trip?.type === "chat") {
-                av.userData.bubbleEl.textContent = state.trip.line;
-                av.userData.bubbleEl.style.display = "block";
-                const partnerState = ai.get(state.trip.partnerId);
-                const partnerAv = avatars.get(state.trip.partnerId);
-                if (partnerState && partnerState.mode === "desk") {
-                  const meet = state.trip.pos.clone();
-                  meet.x += 0.7;
-                  partnerState.mode = "walk";
-                  partnerState.path = [partnerAv.position.clone(), meet];
-                  partnerState.pathIdx = 1;
-                  partnerState.trip = { type: "chat", label: "away · 聊天", line: "👍", partnerId: id };
-                  partnerState.nextWanderAt = now + 20000;
-                }
+              if (state.trip?.isPartner && state.trip?.dialogue?.lines?.[1]) {
+                state.mode = "linger";
+                state.lingerUntil = now + 5000 + Math.random() * 2000;
+                showBubble(av, state.trip.dialogue.lines[1].text, 5000);
+              } else {
+                onArriveLinger(id, now);
               }
             } else {
               state.mode = "desk";
@@ -515,7 +693,6 @@ export function createOffice3D({ canvas, container, onSelect, getStatus }) {
   let running = true;
   let visible = true;
 
-  // Recover from WebGL context loss (common on iOS Safari)
   canvas.addEventListener("webglcontextlost", (e) => {
     e.preventDefault();
     console.warn("WebGL context lost");
@@ -559,6 +736,7 @@ export function createOffice3D({ canvas, container, onSelect, getStatus }) {
     dispose() {
       running = false;
       if (ro) ro.disconnect();
+      ai.forEach(s => clearBubbleTimer(s));
       labelRenderer.domElement.remove();
       renderer.dispose();
     }

@@ -1,5 +1,6 @@
 import { AGENTS, deepLink, fmtMoney, fmtPct, fmtWhen, statusLabel } from "./agents.js";
 import { createOffice3D } from "./office3d.js";
+import { loadTopics } from "./topics.js";
 
 const ZONE_DEFS = [
   { id: "meet", title: "會議室 / Boss desk" },
@@ -11,6 +12,7 @@ const ZONE_DEFS = [
 
 const LS_VIEW = "visual-office-view";
 const LS_FEED = "visual-office-feed-open";
+const MAX_LIVE_CHAT = 12;
 
 const DEFAULT_STATUS = {
   updatedAt: "2026-10-26T18:20:33+08:00",
@@ -42,6 +44,7 @@ let selected = null;
 let mode = "3d";
 let office3d = null;
 let feedOpen = false;
+let liveChats = [];
 
 function isNarrow() {
   return window.matchMedia("(max-width: 899px)").matches;
@@ -110,8 +113,12 @@ function renderPaper(prefix) {
   }).join("");
 }
 
+function mergedFeed() {
+  return liveChats.concat(STATE.feed || []);
+}
+
 function feedHtml() {
-  const feed = STATE.feed || [];
+  const feed = mergedFeed();
   return feed.map(f => {
     const lvl = f.level || "info";
     return `<article class="feed-item ${lvl}">
@@ -126,7 +133,7 @@ function feedHtml() {
 }
 
 function syncFeedUi() {
-  const n = (STATE.feed || []).length;
+  const n = mergedFeed().length;
   const chip = document.getElementById("feed-chip");
   const chipDash = document.getElementById("feed-chip-dash");
   const countEls = [
@@ -143,7 +150,6 @@ function syncFeedUi() {
   const dashFeed = document.getElementById("dash-feed");
   const narrow = isNarrow();
 
-  // 3D sheet
   if (sheet) {
     if (narrow) {
       sheet.hidden = !feedOpen;
@@ -153,7 +159,6 @@ function syncFeedUi() {
         chip.classList.toggle("desktop-show", false);
       }
     } else {
-      // desktop: side panel; remember collapse
       sheet.hidden = false;
       sheet.classList.toggle("is-collapsed", !feedOpen);
       if (chip) {
@@ -163,7 +168,6 @@ function syncFeedUi() {
     }
   }
 
-  // Dashboard feed
   if (dashFeed) {
     if (narrow) {
       dashFeed.classList.toggle("is-open", feedOpen);
@@ -182,7 +186,6 @@ function syncFeedUi() {
     }
   }
 
-  // Measure paper bar for chip offset
   requestAnimationFrame(updatePaperOffset);
 }
 
@@ -208,6 +211,13 @@ function renderFeed() {
   if (body) body.innerHTML = html;
   if (list) list.innerHTML = html;
   syncFeedUi();
+}
+
+function pushLiveChat(entry) {
+  if (!entry?.text) return;
+  liveChats.unshift(entry);
+  if (liveChats.length > MAX_LIVE_CHAT) liveChats.length = MAX_LIVE_CHAT;
+  renderFeed();
 }
 
 function renderHeader() {
@@ -275,7 +285,6 @@ function setMode(next) {
   if (office3d) {
     office3d.setVisible(mode === "3d");
     if (mode === "3d") {
-      // double rAF so flex layout settles before WebGL resize (iOS Safari)
       requestAnimationFrame(() => {
         requestAnimationFrame(() => office3d.resize());
       });
@@ -293,15 +302,16 @@ async function loadStatus() {
       STATE = Object.assign({}, DEFAULT_STATUS, data);
       if (!STATE.desks?.length) STATE.desks = DEFAULT_STATUS.desks;
       if (!STATE.feed?.length) STATE.feed = DEFAULT_STATUS.feed;
+      await loadTopics(STATE.topics);
     }
   } catch {
     STATE = JSON.parse(JSON.stringify(DEFAULT_STATUS));
+    await loadTopics();
   }
   renderAll();
 }
 
 function initFeedPreference() {
-  // Default: collapsed on narrow, open on desktop
   let saved = null;
   try { saved = localStorage.getItem(LS_FEED); } catch {}
   if (saved === "1") feedOpen = true;
@@ -356,7 +366,8 @@ function init() {
       canvas,
       container: stage,
       onSelect: openDesk,
-      getStatus: () => STATE
+      getStatus: () => STATE,
+      onChat: pushLiveChat
     });
   } catch (err) {
     console.error("WebGL init failed", err);
@@ -368,7 +379,7 @@ function init() {
   try { saved = localStorage.getItem(LS_VIEW) || "3d"; } catch {}
   setMode(saved === "dash" ? "dash" : "3d");
 
-  loadStatus();
+  loadTopics().then(() => loadStatus());
   setInterval(loadStatus, 60000);
 
   window.addEventListener("resize", () => {
@@ -382,7 +393,6 @@ function init() {
     });
   }
   window.matchMedia("(max-width: 899px)").addEventListener("change", () => {
-    // Re-apply default only if user never set preference? Keep saved.
     syncFeedUi();
   });
 }
