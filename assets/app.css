@@ -152,7 +152,7 @@ button { font: inherit; cursor: pointer; }
 .view.active { display: flex; flex-direction: column; }
 
 /* ===== 3D view ===== */
-#view-3d.active { background: #d9e8ee; }
+#view-3d.active { background: #f3eee4; }
 .stage-3d {
   position: relative;
   flex: 1 1 auto;
@@ -167,7 +167,7 @@ button { font: inherit; cursor: pointer; }
   width: 100% !important;
   height: 100% !important;
   touch-action: none;
-  background: #d9e8ee;
+  background: #f3eee4;
 }
 .webgl-fallback {
   position: absolute; inset: 0; z-index: 5;
@@ -195,6 +195,38 @@ button { font: inherit; cursor: pointer; }
   padding: 6px 10px; border-radius: 12px 12px 12px 4px;
   box-shadow: 0 8px 18px rgba(60,70,55,.12); pointer-events: none;
   transform: translate(-50%, -160%); white-space: nowrap;
+}
+
+
+.label3d .l3-name { display: block; font-weight: 700; font-size: 11px; line-height: 1.15; }
+.label3d .l3-role { display: block; font-weight: 500; font-size: 9px; color: var(--muted); margin-top: 1px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.floor-badge {
+  font: 700 11px/1.2 var(--font);
+  color: #fff;
+  background: #1a1a1a;
+  border: 1px solid rgba(255,255,255,.12);
+  padding: 6px 12px;
+  border-radius: 4px;
+  white-space: nowrap;
+  letter-spacing: .04em;
+  box-shadow: 0 6px 16px rgba(0,0,0,.18);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.room-badge {
+  font: 700 9px/1 var(--mono);
+  color: #fff;
+  background: rgba(30,30,30,.82);
+  padding: 4px 8px;
+  border-radius: 3px;
+  letter-spacing: .08em;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+}
+.room-badge.neon-red {
+  background: rgba(220, 50, 50, .9);
+  box-shadow: 0 0 14px rgba(239, 68, 68, .55);
 }
 
 .hud-hint {

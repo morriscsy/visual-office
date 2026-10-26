@@ -1,16 +1,19 @@
 /** Shared specialist roster — agentIds must stay unchanged. */
 export const AGENTS = [
-  { id: "masterki", name: "MasterKi", role: "Boss / coordinator", zone: "會議室", zoneKey: "meet", zoneLabel: "會議室 · Boss", initials: "MK", colorClass: "c0", color: 0xd45a5a, pos: [0, 0, -10] },
-  { id: "econpulse", name: "EconPulse", role: "Macro / prints", zone: "宏觀研究部", zoneKey: "macro", zoneLabel: "宏觀研究部", initials: "EP", colorClass: "c1", color: 0x5f92a8, pos: [-9, 0, -2] },
-  { id: "marketwatch", name: "MarketWatch", role: "Tape / alerts", zone: "交易監控部", zoneKey: "macro", zoneLabel: "交易監控部", initials: "MW", colorClass: "c2", color: 0xc9953a, pos: [-9, 0, 3] },
-  { id: "stratlab", name: "StratLab", role: "Strategies", zone: "策略部", zoneKey: "strategy", zoneLabel: "策略研究室", initials: "SL", colorClass: "c3", color: 0x7d9b8a, pos: [-3, 0, 8] },
-  { id: "workfolio", name: "Workfolio", role: "Vault / Pages", zone: "資料庫", zoneKey: "strategy", zoneLabel: "作品檔案室", initials: "WF", colorClass: "c3", color: 0xa88455, pos: [3, 0, 8] },
-  { id: "patternlab", name: "PatternLab", role: "iH&S", zone: "圖表實驗室", zoneKey: "charts", zoneLabel: "圖形辨識", initials: "PL", colorClass: "c2", color: 0x3d9a6a, pos: [9, 0, -4] },
-  { id: "patternsight", name: "PatternSight", role: "Candles", zone: "圖表實驗室", zoneKey: "charts", zoneLabel: "K線形態", initials: "PS", colorClass: "c2", color: 0x5f7d6c, pos: [9, 0, -1] },
-  { id: "pinbarlab", name: "PinBarLab", role: "Pin bars", zone: "圖表實驗室", zoneKey: "charts", zoneLabel: "Pinbar 戰法", initials: "PB", colorClass: "c5", color: 0xc97a9a, pos: [9, 0, 2] },
-  { id: "shoulderlab", name: "ShoulderLab", role: "H&S", zone: "圖表實驗室", zoneKey: "charts", zoneLabel: "頭肩形態", initials: "SH", colorClass: "c5", color: 0xb08a6a, pos: [9, 0, 5] },
-  { id: "laoyulab", name: "撈魚Lab", role: "老余 · 破底翻", zone: "圖表實驗室", zoneKey: "charts", zoneLabel: "老余戰法", initials: "LY", colorClass: "c4", color: 0x3d9a6a, pos: [6, 0, 8] },
-  { id: "plaudlab", name: "PlaudLab", role: "Notes / transcripts", zone: "筆記室", zoneKey: "notes", zoneLabel: "會議筆記室", initials: "PD", colorClass: "c4", color: 0x8bb8c9, pos: [0, 0, 3] }
+  // L1 Reception / Ops
+  { id: "masterki", name: "MasterKi", role: "Boss / coordinator", zone: "L1 Reception", zoneKey: "meet", zoneLabel: "L1 · Reception / Boss", floor: 1, initials: "MK", colorClass: "c0", color: 0xd45a5a, pos: [0.2, 0, 1.6] },
+  { id: "workfolio", name: "Workfolio", role: "Vault / Pages", zone: "L1 Ops", zoneKey: "strategy", zoneLabel: "L1 · Ops vault", floor: 1, initials: "WF", colorClass: "c3", color: 0xa88455, pos: [-3.2, 0, -2.2] },
+  { id: "plaudlab", name: "PlaudLab", role: "Notes / transcripts", zone: "L1 Ops", zoneKey: "notes", zoneLabel: "L1 · Notes desk", floor: 1, initials: "PD", colorClass: "c4", color: 0x8bb8c9, pos: [2.8, 0, -2.0] },
+  // L2 Markets / Trading
+  { id: "econpulse", name: "EconPulse", role: "Macro / prints", zone: "L2 Markets", zoneKey: "macro", zoneLabel: "L2 · Macro desk", floor: 2, initials: "EP", colorClass: "c1", color: 0x5f92a8, pos: [-3.4, 0, -1.4] },
+  { id: "marketwatch", name: "MarketWatch", role: "Tape / alerts", zone: "L2 Markets", zoneKey: "macro", zoneLabel: "L2 · Tape desk", floor: 2, initials: "MW", colorClass: "c2", color: 0xc9953a, pos: [-0.6, 0, -1.4] },
+  { id: "stratlab", name: "StratLab", role: "Strategies", zone: "L2 Markets", zoneKey: "strategy", zoneLabel: "L2 · Strategy desk", floor: 2, initials: "SL", colorClass: "c3", color: 0x7d9b8a, pos: [2.2, 0, -1.4] },
+  // L3 Engineering / Patterns
+  { id: "patternlab", name: "PatternLab", role: "iH&S", zone: "L3 Engineering", zoneKey: "charts", zoneLabel: "L3 · iH&S", floor: 3, initials: "PL", colorClass: "c2", color: 0x3d9a6a, pos: [-3.6, 0, -1.2] },
+  { id: "patternsight", name: "PatternSight", role: "Candles", zone: "L3 Engineering", zoneKey: "charts", zoneLabel: "L3 · Candles", floor: 3, initials: "PS", colorClass: "c2", color: 0x5f7d6c, pos: [-1.2, 0, -1.2] },
+  { id: "pinbarlab", name: "PinBarLab", role: "Pin bars", zone: "L3 Engineering", zoneKey: "charts", zoneLabel: "L3 · Pinbar", floor: 3, initials: "PB", colorClass: "c5", color: 0xc97a9a, pos: [1.2, 0, -1.2] },
+  { id: "shoulderlab", name: "ShoulderLab", role: "H&S", zone: "L3 Engineering", zoneKey: "charts", zoneLabel: "L3 · H&S", floor: 3, initials: "SH", colorClass: "c5", color: 0xb08a6a, pos: [3.4, 0, 0.8] },
+  { id: "laoyulab", name: "撈魚Lab", role: "老余 · 破底翻", zone: "L3 Engineering", zoneKey: "charts", zoneLabel: "L3 · 老余", floor: 3, initials: "LY", colorClass: "c4", color: 0x3d9a6a, pos: [-2.4, 0, 1.6] }
 ];
 
 export const AGENT_IDS = {
@@ -57,4 +60,12 @@ export function statusLabel(s) {
   if (s === "working" || s === "active") return s === "active" ? "active" : "working";
   if (s === "away") return "away";
   return "idle";
+}
+
+/** Floor slab Y (avatar feet) for floors 1..3 */
+export const FLOOR_Y = { 1: 0, 2: 3.55, 3: 7.1 };
+
+export function deskSitOffset(agent) {
+  const fy = FLOOR_Y[agent.floor] ?? 0;
+  return [agent.pos[0], fy, agent.pos[2] + 0.55];
 }

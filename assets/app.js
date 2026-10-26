@@ -3,11 +3,11 @@ import { createOffice3D } from "./office3d.js";
 import { loadTopics } from "./topics.js";
 
 const ZONE_DEFS = [
-  { id: "meet", title: "會議室 / Boss desk" },
-  { id: "macro", title: "宏觀 · 交易監控" },
-  { id: "strategy", title: "策略 · 作品檔案" },
-  { id: "charts", title: "圖形辨識部" },
-  { id: "notes", title: "會議筆記室" }
+  { id: "meet", title: "L1 · Reception / Boss" },
+  { id: "macro", title: "L2 · Markets / Macro" },
+  { id: "strategy", title: "L1–L2 · Strategy / Vault" },
+  { id: "charts", title: "L3 · Engineering / Patterns" },
+  { id: "notes", title: "L1 · Notes" }
 ];
 
 const LS_VIEW = "visual-office-view";
