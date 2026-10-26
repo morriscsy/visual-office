@@ -9,6 +9,9 @@ const ZONE_DEFS = [
   { id: "notes", title: "會議筆記室" }
 ];
 
+const LS_VIEW = "visual-office-view";
+const LS_FEED = "visual-office-feed-open";
+
 const DEFAULT_STATUS = {
   updatedAt: "2026-10-26T18:20:33+08:00",
   killSwitch: "inactive",
@@ -38,6 +41,11 @@ let STATE = JSON.parse(JSON.stringify(DEFAULT_STATUS));
 let selected = null;
 let mode = "3d";
 let office3d = null;
+let feedOpen = false;
+
+function isNarrow() {
+  return window.matchMedia("(max-width: 899px)").matches;
+}
 
 function deskStatusMap() {
   const m = {};
@@ -102,10 +110,9 @@ function renderPaper(prefix) {
   }).join("");
 }
 
-function renderFeed3d() {
-  const body = document.getElementById("feed-body");
+function feedHtml() {
   const feed = STATE.feed || [];
-  body.innerHTML = feed.map(f => {
+  return feed.map(f => {
     const lvl = f.level || "info";
     return `<article class="feed-item ${lvl}">
       <div class="feed-meta">
@@ -118,21 +125,89 @@ function renderFeed3d() {
   }).join("") || '<p style="padding:10px;color:var(--dim);font-size:12px">No announcements</p>';
 }
 
-function renderFeedDash() {
+function syncFeedUi() {
+  const n = (STATE.feed || []).length;
+  const chip = document.getElementById("feed-chip");
+  const chipDash = document.getElementById("feed-chip-dash");
+  const countEls = [
+    document.getElementById("feed-chip-count"),
+    document.getElementById("feed-chip-count-dash"),
+    document.getElementById("feedCount")
+  ];
+  countEls.forEach(el => { if (el) el.textContent = String(n); });
+  if (document.getElementById("feedCount")) {
+    document.getElementById("feedCount").textContent = n + " items";
+  }
+
+  const sheet = document.getElementById("feed-sheet");
+  const dashFeed = document.getElementById("dash-feed");
+  const narrow = isNarrow();
+
+  // 3D sheet
+  if (sheet) {
+    if (narrow) {
+      sheet.hidden = !feedOpen;
+      sheet.classList.remove("is-collapsed");
+      if (chip) {
+        chip.setAttribute("aria-expanded", feedOpen ? "true" : "false");
+        chip.classList.toggle("desktop-show", false);
+      }
+    } else {
+      // desktop: side panel; remember collapse
+      sheet.hidden = false;
+      sheet.classList.toggle("is-collapsed", !feedOpen);
+      if (chip) {
+        chip.classList.toggle("desktop-show", !feedOpen);
+        chip.setAttribute("aria-expanded", feedOpen ? "true" : "false");
+      }
+    }
+  }
+
+  // Dashboard feed
+  if (dashFeed) {
+    if (narrow) {
+      dashFeed.classList.toggle("is-open", feedOpen);
+      dashFeed.classList.remove("is-collapsed");
+      if (chipDash) {
+        chipDash.setAttribute("aria-expanded", feedOpen ? "true" : "false");
+        chipDash.classList.remove("desktop-show");
+      }
+    } else {
+      dashFeed.classList.add("is-open");
+      dashFeed.classList.toggle("is-collapsed", !feedOpen);
+      if (chipDash) {
+        chipDash.classList.toggle("desktop-show", !feedOpen);
+        chipDash.setAttribute("aria-expanded", feedOpen ? "true" : "false");
+      }
+    }
+  }
+
+  // Measure paper bar for chip offset
+  requestAnimationFrame(updatePaperOffset);
+}
+
+function updatePaperOffset() {
+  const bar = mode === "3d"
+    ? document.getElementById("paper-bar-3d")
+    : document.getElementById("paper-bar-dash");
+  if (!bar) return;
+  const h = Math.ceil(bar.getBoundingClientRect().height) || 56;
+  document.documentElement.style.setProperty("--paper-h", h + "px");
+}
+
+function setFeedOpen(open) {
+  feedOpen = !!open;
+  try { localStorage.setItem(LS_FEED, feedOpen ? "1" : "0"); } catch {}
+  syncFeedUi();
+}
+
+function renderFeed() {
+  const body = document.getElementById("feed-body");
   const list = document.getElementById("feedList");
-  const feed = STATE.feed || [];
-  document.getElementById("feedCount").textContent = feed.length + " items";
-  list.innerHTML = feed.map(f => {
-    const lvl = f.level || "info";
-    return `<article class="feed-item ${lvl}">
-      <div class="feed-meta">
-        <span class="feed-from">${f.from || "?"}</span>
-        <span>${f.zone || ""}</span>
-        <span class="feed-at">${fmtWhen(f.at)}</span>
-      </div>
-      <div class="feed-text">${f.text || ""}</div>
-    </article>`;
-  }).join("") || '<p style="padding:12px;color:var(--dim)">No announcements</p>';
+  const html = feedHtml();
+  if (body) body.innerHTML = html;
+  if (list) list.innerHTML = html;
+  syncFeedUi();
 }
 
 function renderHeader() {
@@ -184,11 +259,11 @@ function renderAll() {
   renderHeader();
   renderPaper("3d");
   renderPaper("dash");
-  renderFeed3d();
-  renderFeedDash();
+  renderFeed();
   renderFloor();
   const asOf = document.getElementById("tickerAsOf");
   if (asOf) asOf.textContent = STATE.tickerAsOf || "";
+  updatePaperOffset();
 }
 
 function setMode(next) {
@@ -199,9 +274,15 @@ function setMode(next) {
   document.getElementById("btn-dash").classList.toggle("active", mode === "dash");
   if (office3d) {
     office3d.setVisible(mode === "3d");
-    if (mode === "3d") office3d.resize();
+    if (mode === "3d") {
+      // double rAF so flex layout settles before WebGL resize (iOS Safari)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => office3d.resize());
+      });
+    }
   }
-  try { localStorage.setItem("visual-office-view", mode); } catch {}
+  syncFeedUi();
+  try { localStorage.setItem(LS_VIEW, mode); } catch {}
 }
 
 async function loadStatus() {
@@ -219,6 +300,15 @@ async function loadStatus() {
   renderAll();
 }
 
+function initFeedPreference() {
+  // Default: collapsed on narrow, open on desktop
+  let saved = null;
+  try { saved = localStorage.getItem(LS_FEED); } catch {}
+  if (saved === "1") feedOpen = true;
+  else if (saved === "0") feedOpen = false;
+  else feedOpen = !isNarrow();
+}
+
 function init() {
   document.getElementById("modal-close").addEventListener("click", closeModal);
   document.getElementById("modal").addEventListener("click", (e) => {
@@ -233,11 +323,14 @@ function init() {
       toast(selected.agentId);
     }
   });
-  document.getElementById("feed-toggle").addEventListener("click", () => {
-    const panel = document.getElementById("feed-panel");
-    panel.classList.toggle("collapsed");
-    document.getElementById("feed-toggle").textContent = panel.classList.contains("collapsed") ? "+" : "−";
-  });
+
+  const openFeed = () => setFeedOpen(true);
+  const closeFeed = () => setFeedOpen(false);
+  document.getElementById("feed-chip")?.addEventListener("click", openFeed);
+  document.getElementById("feed-chip-dash")?.addEventListener("click", openFeed);
+  document.getElementById("feed-close")?.addEventListener("click", closeFeed);
+  document.getElementById("feed-min-dash")?.addEventListener("click", closeFeed);
+
   document.getElementById("btn-3d").addEventListener("click", () => setMode("3d"));
   document.getElementById("btn-dash").addEventListener("click", () => setMode("dash"));
   document.querySelectorAll(".zone-filter button").forEach(btn => {
@@ -252,19 +345,46 @@ function init() {
     });
   });
 
+  initFeedPreference();
+
   const canvas = document.getElementById("office-canvas");
-  office3d = createOffice3D({
-    canvas,
-    onSelect: openDesk,
-    getStatus: () => STATE
-  });
+  const stage = document.getElementById("stage-3d");
+  const fallback = document.getElementById("webgl-fallback");
+
+  try {
+    office3d = createOffice3D({
+      canvas,
+      container: stage,
+      onSelect: openDesk,
+      getStatus: () => STATE
+    });
+  } catch (err) {
+    console.error("WebGL init failed", err);
+    if (fallback) fallback.hidden = false;
+    office3d = null;
+  }
 
   let saved = "3d";
-  try { saved = localStorage.getItem("visual-office-view") || "3d"; } catch {}
+  try { saved = localStorage.getItem(LS_VIEW) || "3d"; } catch {}
   setMode(saved === "dash" ? "dash" : "3d");
 
   loadStatus();
   setInterval(loadStatus, 60000);
+
+  window.addEventListener("resize", () => {
+    syncFeedUi();
+    if (office3d && mode === "3d") office3d.resize();
+  });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", () => {
+      updatePaperOffset();
+      if (office3d && mode === "3d") office3d.resize();
+    });
+  }
+  window.matchMedia("(max-width: 899px)").addEventListener("change", () => {
+    // Re-apply default only if user never set preference? Keep saved.
+    syncFeedUi();
+  });
 }
 
 init();

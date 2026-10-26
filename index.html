@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#f4f1ea" />
-  <meta name="description" content="Morris Desk — AI可視化辦公室 v0.3 · Swedish modern 3D + dashboard · Grok Bot specialists" />
+  <meta name="description" content="Morris Desk — AI可視化辦公室 v0.3.1 · Swedish modern 3D + dashboard · Grok Bot specialists" />
   <link rel="canonical" href="https://morriscsy.github.io/visual-office/" />
-  <title>AI可視化辦公室 v0.3 · Morris Desk</title>
+  <title>AI可視化辦公室 v0.3.1 · Morris Desk</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -25,32 +25,46 @@
     <header class="hud-top">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">▣</div>
-        <div>
-          <div class="brand-title">AI可視化辦公室 <span class="ver">v0.3</span></div>
+        <div class="brand-text">
+          <div class="brand-title">AI可視化辦公室 <span class="ver">v0.3.1</span></div>
           <div class="brand-sub">Morris Desk · Swedish modern · Grok Bot specialists</div>
         </div>
       </div>
-      <div class="hud-right">
+      <div class="hud-controls">
         <div class="view-toggle" role="tablist" aria-label="View mode">
           <button type="button" class="active" data-mode="3d" id="btn-3d">3D辦公室</button>
-          <button type="button" data-mode="dash" id="btn-dash">儀表板 Dashboard</button>
+          <button type="button" data-mode="dash" id="btn-dash">儀表板</button>
         </div>
         <span id="kill-pill" class="pill ok"><span class="dot"></span> KILL · inactive</span>
-        <span id="clock-pill" class="pill">—</span>
+      </div>
+      <div class="hud-meta">
+        <span id="clock-pill" class="meta-line">—</span>
       </div>
     </header>
 
     <!-- 3D view -->
     <section class="view active" id="view-3d" aria-label="3D office">
-      <canvas id="office-canvas"></canvas>
-      <aside class="hud-feed" id="feed-panel">
+      <div class="stage-3d" id="stage-3d">
+        <canvas id="office-canvas"></canvas>
+        <div id="webgl-fallback" class="webgl-fallback" hidden>
+          <p>3D 無法啟動（WebGL）。請改用儀表板，或更新 Safari。</p>
+        </div>
+        <div class="hud-hint">拖曳旋轉 · 雙指縮放 · 點員工</div>
+      </div>
+
+      <button type="button" class="feed-chip" id="feed-chip" aria-expanded="false" aria-controls="feed-sheet">
+        公告 <span id="feed-chip-count">0</span>
+      </button>
+
+      <aside class="feed-sheet" id="feed-sheet" aria-label="Announcement feed" hidden>
+        <div class="feed-sheet-handle" aria-hidden="true"></div>
         <div class="feed-head">
-          <span>Announcement feed</span>
-          <button type="button" id="feed-toggle" aria-label="Toggle feed">−</button>
+          <span>部門公告 · Feed</span>
+          <button type="button" id="feed-close" aria-label="Close feed">✕</button>
         </div>
         <div class="feed-body" id="feed-body"></div>
       </aside>
-      <div class="hud-hint">拖曳旋轉 · 滾輪縮放 · 點擊員工 · 員工會去廁所 / 茶水間 / 聊天</div>
+
       <div class="hud-paper" id="paper-bar-3d">
         <span class="paper-label" id="paper-label-3d">模擬 / PAPER</span>
         <span class="paper-bal" id="paper-bal-3d">$10,000</span>
@@ -59,27 +73,32 @@
       </div>
     </section>
 
-    <!-- Dashboard view (CSS floor plan from v0.1) -->
+    <!-- Dashboard view -->
     <section class="view" id="view-dash" aria-label="Dashboard">
       <div class="dash-toolbar">
         <div class="zone-filter" role="tablist" aria-label="Zones">
           <button type="button" class="active" data-view="all">全景</button>
           <button type="button" data-view="meet">會議室</button>
-          <button type="button" data-view="macro">宏觀 / 監控</button>
-          <button type="button" data-view="strategy">策略 / 檔案</button>
-          <button type="button" data-view="charts">圖形部</button>
-          <button type="button" data-view="notes">筆記室</button>
+          <button type="button" data-view="macro">宏觀</button>
+          <button type="button" data-view="strategy">策略</button>
+          <button type="button" data-view="charts">圖形</button>
+          <button type="button" data-view="notes">筆記</button>
         </div>
-        <div class="hint" style="color:var(--dim);font-size:11px">Click a desk → open bot · status from office-status.json</div>
+        <button type="button" class="feed-chip dash" id="feed-chip-dash" aria-expanded="false">
+          公告 <span id="feed-chip-count-dash">0</span>
+        </button>
       </div>
       <main class="dash-shell">
         <section class="floor-wrap" aria-label="Office floor">
           <div class="floor" id="floor"></div>
         </section>
-        <aside class="dash-feed" aria-label="Announcements">
+        <aside class="dash-feed" id="dash-feed" aria-label="Announcements">
           <div class="feed-head">
-            <h2 style="margin:0;font-size:13px">部門公告 · Feed</h2>
-            <span class="hint" id="feedCount" style="color:var(--dim);font-size:11px">0</span>
+            <h2>部門公告 · Feed</h2>
+            <div class="feed-head-actions">
+              <span class="hint" id="feedCount">0</span>
+              <button type="button" class="feed-min-btn" id="feed-min-dash" aria-label="Minimize feed">−</button>
+            </div>
           </div>
           <div class="feed-list" id="feedList"></div>
         </aside>

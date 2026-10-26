@@ -238,46 +238,81 @@ function pickWanderTarget(selfId, avatars) {
   };
 }
 
-export function createOffice3D({ canvas, onSelect, getStatus }) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+
+export function createOffice3D({ canvas, container, onSelect, getStatus }) {
+  const host = container || canvas.parentElement;
+
+  function measure() {
+    const w = Math.max(1, Math.floor(host.clientWidth || canvas.clientWidth || window.innerWidth || 1));
+    const h = Math.max(1, Math.floor(host.clientHeight || canvas.clientHeight || Math.floor(window.innerHeight * 0.5) || 1));
+    return { w, h };
+  }
+
+  const mobile = (typeof window !== "undefined") && (
+    window.matchMedia("(max-width: 900px)").matches ||
+    /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || "")
+  );
+
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: !mobile,
+      alpha: false,
+      powerPreference: mobile ? "low-power" : "high-performance",
+      failIfMajorPerformanceCaveat: false
+    });
+  } catch (err) {
+    throw err;
+  }
+
+  const { w: iw, h: ih } = measure();
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobile ? 1.5 : 2));
+  renderer.setSize(iw, ih, false);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMappingExposure = 1.2;
   renderer.setClearColor(C.sky, 1);
 
   const labelRenderer = new CSS2DRenderer();
-  labelRenderer.setSize(canvas.clientWidth, canvas.clientHeight);
+  labelRenderer.setSize(iw, ih);
   labelRenderer.domElement.style.position = "absolute";
   labelRenderer.domElement.style.inset = "0";
   labelRenderer.domElement.style.pointerEvents = "none";
-  canvas.parentElement.appendChild(labelRenderer.domElement);
+  labelRenderer.domElement.style.zIndex = "2";
+  host.appendChild(labelRenderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0xd9e8ee, 28, 55);
+  scene.background = new THREE.Color(C.sky);
+  scene.fog = new THREE.Fog(0xd9e8ee, 30, 60);
 
-  const camera = new THREE.PerspectiveCamera(42, canvas.clientWidth / canvas.clientHeight, 0.1, 120);
-  camera.position.set(16, 14, 18);
+  const camera = new THREE.PerspectiveCamera(42, iw / ih, 0.1, 120);
+  // Slightly higher / closer for mobile portrait
+  if (mobile) camera.position.set(14, 16, 16);
+  else camera.position.set(16, 14, 18);
 
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, 0.5, 0);
   controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
   controls.maxPolarAngle = Math.PI * 0.48;
   controls.minDistance = 8;
   controls.maxDistance = 40;
+  controls.enablePan = true;
+  controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
   controls.update();
 
   // Soft Nordic daylight
-  scene.add(new THREE.AmbientLight(C.ambient, 0.85));
-  const hemi = new THREE.HemisphereLight(0xeaf4f8, 0xd9c4a1, 0.55);
+  scene.add(new THREE.AmbientLight(C.ambient, 0.9));
+  const hemi = new THREE.HemisphereLight(0xeaf4f8, 0xd9c4a1, 0.6);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(C.sun, 1.15);
+  const sun = new THREE.DirectionalLight(C.sun, 1.2);
   sun.position.set(12, 22, 8);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  const shadowSize = mobile ? 512 : 1024;
+  sun.shadow.mapSize.set(shadowSize, shadowSize);
   sun.shadow.camera.near = 2;
   sun.shadow.camera.far = 50;
   sun.shadow.camera.left = -20;
@@ -286,7 +321,7 @@ export function createOffice3D({ canvas, onSelect, getStatus }) {
   sun.shadow.camera.bottom = -20;
   sun.shadow.bias = -0.0002;
   scene.add(sun);
-  const fill = new THREE.DirectionalLight(0xcfe4ec, 0.35);
+  const fill = new THREE.DirectionalLight(0xcfe4ec, 0.4);
   fill.position.set(-10, 10, -8);
   scene.add(fill);
 
@@ -294,7 +329,7 @@ export function createOffice3D({ canvas, onSelect, getStatus }) {
   AGENTS.forEach(a => buildDesk(scene, a));
 
   const avatars = new Map();
-  const ai = new Map(); // id -> state machine
+  const ai = new Map();
 
   AGENTS.forEach((agent, i) => {
     const av = makeAvatar(agent);
@@ -302,7 +337,7 @@ export function createOffice3D({ canvas, onSelect, getStatus }) {
     scene.add(av);
     avatars.set(agent.id, av);
     ai.set(agent.id, {
-      mode: "desk", // desk | walk | linger | return
+      mode: "desk",
       path: [],
       pathIdx: 0,
       speed: 1.55 + Math.random() * 0.4,
@@ -317,19 +352,35 @@ export function createOffice3D({ canvas, onSelect, getStatus }) {
   const pointer = new THREE.Vector2();
 
   function resize() {
-    const w = canvas.clientWidth || canvas.parentElement.clientWidth;
-    const h = canvas.clientHeight || canvas.parentElement.clientHeight;
-    if (!w || !h) return;
+    const { w, h } = measure();
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h, false);
     labelRenderer.setSize(w, h);
   }
+
+  // Robust size: ResizeObserver + visualViewport + delayed retries (iOS Safari)
+  let ro = null;
+  if (typeof ResizeObserver !== "undefined") {
+    ro = new ResizeObserver(() => resize());
+    ro.observe(host);
+  }
   window.addEventListener("resize", resize);
-  resize();
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", resize);
+    window.visualViewport.addEventListener("scroll", resize);
+  }
+  // Layout may not be ready on first paint
+  requestAnimationFrame(() => {
+    resize();
+    requestAnimationFrame(resize);
+  });
+  setTimeout(resize, 100);
+  setTimeout(resize, 400);
 
   canvas.addEventListener("pointerdown", (e) => {
     const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
     pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(pointer, camera);
@@ -342,7 +393,7 @@ export function createOffice3D({ canvas, onSelect, getStatus }) {
     if (obj?.userData.agentId) onSelect?.(obj.userData.agentId);
   });
 
-  function queueStatusVisuals() {
+  function updateStatusVisuals() {
     const st = getStatus?.() || {};
     const byId = {};
     (st.desks || []).forEach(d => { byId[d.id] = d; });
@@ -364,7 +415,6 @@ export function createOffice3D({ canvas, onSelect, getStatus }) {
   function startWander(id, now) {
     const state = ai.get(id);
     const av = avatars.get(id);
-    // don't wander if too many already away
     let away = 0;
     ai.forEach(s => { if (s.mode !== "desk") away++; });
     if (away >= 4) {
@@ -373,8 +423,6 @@ export function createOffice3D({ canvas, onSelect, getStatus }) {
     }
     const trip = pickWanderTarget(id, avatars);
     const from = av.position.clone();
-    const via = WAYPOINTS.hallA.clone();
-    // route via nearest hall
     const halls = [WAYPOINTS.hallA, WAYPOINTS.hallB, WAYPOINTS.hallC];
     halls.sort((a, b) => a.distanceTo(from) - b.distanceTo(from));
     const path = [from.clone(), halls[0].clone(), trip.pos.clone()];
@@ -402,7 +450,6 @@ export function createOffice3D({ canvas, onSelect, getStatus }) {
   function stepAI(dt, now) {
     avatars.forEach((av, id) => {
       const state = ai.get(id);
-      // schedule
       if (state.mode === "desk" && now >= state.nextWanderAt) startWander(id, now);
 
       if (state.mode === "linger") {
@@ -426,7 +473,6 @@ export function createOffice3D({ canvas, onSelect, getStatus }) {
               if (state.trip?.type === "chat") {
                 av.userData.bubbleEl.textContent = state.trip.line;
                 av.userData.bubbleEl.style.display = "block";
-                // also pull partner briefly if at desk
                 const partnerState = ai.get(state.trip.partnerId);
                 const partnerAv = avatars.get(state.trip.partnerId);
                 if (partnerState && partnerState.mode === "desk") {
@@ -450,9 +496,7 @@ export function createOffice3D({ canvas, onSelect, getStatus }) {
           const dir = target.clone().sub(pos).normalize();
           pos.addScaledVector(dir, step);
           av.rotation.y = Math.atan2(dir.x, dir.z);
-          // leg bob
           const t = now * 0.012;
-          state.legsPhase = t;
           const [l, r] = av.userData.legs || [];
           if (l && r) {
             l.rotation.x = Math.sin(t) * 0.45;
@@ -460,7 +504,6 @@ export function createOffice3D({ canvas, onSelect, getStatus }) {
           }
         }
       } else {
-        // idle at desk — gentle breathe
         const [l, r] = av.userData.legs || [];
         if (l && r) { l.rotation.x = 0; r.rotation.x = 0; }
         av.position.y = Math.sin(now * 0.002 + id.length) * 0.015;
@@ -472,6 +515,16 @@ export function createOffice3D({ canvas, onSelect, getStatus }) {
   let running = true;
   let visible = true;
 
+  // Recover from WebGL context loss (common on iOS Safari)
+  canvas.addEventListener("webglcontextlost", (e) => {
+    e.preventDefault();
+    console.warn("WebGL context lost");
+  });
+  canvas.addEventListener("webglcontextrestored", () => {
+    console.warn("WebGL context restored — resizing");
+    resize();
+  });
+
   function frame(now) {
     if (!running) return;
     requestAnimationFrame(frame);
@@ -480,7 +533,6 @@ export function createOffice3D({ canvas, onSelect, getStatus }) {
     last = now;
     stepAI(dt, now);
     updateStatusVisuals();
-    // alert pulse
     avatars.forEach((av, id) => {
       const st = ai.get(id);
       if (st.mode === "desk" && st.deskStatus === "alert" && av.userData.glow) {
@@ -500,11 +552,13 @@ export function createOffice3D({ canvas, onSelect, getStatus }) {
       labelRenderer.domElement.style.display = v ? "block" : "none";
       if (v) {
         resize();
+        requestAnimationFrame(() => requestAnimationFrame(resize));
         last = performance.now();
       }
     },
     dispose() {
       running = false;
+      if (ro) ro.disconnect();
       labelRenderer.domElement.remove();
       renderer.dispose();
     }
