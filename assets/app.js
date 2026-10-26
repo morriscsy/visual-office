@@ -379,14 +379,14 @@ function init() {
   const rtMeta = document.getElementById("rt-meta");
   function syncRtUi(info) {
     if (!btnRt) return;
-    const i = info || office3d?.getRayTraceInfo?.() || { enabled: false, mode: "pbr", supported: true };
+    const i = info || office3d?.getRayTraceInfo?.() || { enabled: false, mode: "clay", supported: true };
     btnRt.setAttribute("aria-pressed", i.enabled ? "true" : "false");
     btnRt.classList.toggle("loading", !!i.loading);
     btnRt.classList.toggle("error", !!i.error && !i.enabled);
     if (!i.supported) {
       btnRt.disabled = true;
-      btnRt.title = "Mobile uses HQ PBR + bloom (path tracer is desktop-only)";
-      if (rtMeta) rtMeta.textContent = "PBR";
+      btnRt.title = "Mobile uses clay diorama (path tracer is desktop-only)";
+      if (rtMeta) rtMeta.textContent = "CLAY";
       return;
     }
     btnRt.disabled = !!i.loading;
@@ -396,16 +396,16 @@ function init() {
       const n = Math.round(i.samples || 0);
       if (rtMeta) rtMeta.textContent = n > 0 ? `${n}spp` : "RT";
     } else if (i.error && !i.enabled) {
-      if (rtMeta) rtMeta.textContent = "HQ";
+      if (rtMeta) rtMeta.textContent = "CLAY";
     } else {
-      if (rtMeta) rtMeta.textContent = "PBR";
+      if (rtMeta) rtMeta.textContent = "CLAY";
     }
   }
   if (btnRt) {
     if (office3d?.isMobile) {
       btnRt.disabled = true;
-      btnRt.title = "Mobile uses HQ PBR + bloom (path tracer is desktop-only)";
-      if (rtMeta) rtMeta.textContent = "PBR";
+      btnRt.title = "Mobile uses clay diorama (path tracer is desktop-only)";
+      if (rtMeta) rtMeta.textContent = "CLAY";
     }
     office3d?.onRayTraceChange?.(syncRtUi);
     syncRtUi(office3d?.getRayTraceInfo?.());
@@ -420,12 +420,12 @@ function init() {
         syncRtUi(info);
         if (info.enabled && info.ready) toast("光線追蹤 ON · progressive samples");
         else if (info.enabled && info.loading) toast("Loading path tracer…");
-        else if (!info.enabled && info.error) toast("Path tracer unavailable · HQ PBR boosted");
-        else toast("光線追蹤 OFF · HQ PBR");
+        else if (!info.enabled && info.error) toast("Path tracer unavailable · clay look kept");
+        else toast("光線追蹤 OFF · clay");
       } catch (err) {
         console.warn(err);
         syncRtUi(office3d.getRayTraceInfo?.());
-        toast("Ray Trace failed · staying on PBR");
+        toast("Ray Trace failed · staying on clay");
       }
     });
   }
