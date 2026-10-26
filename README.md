@@ -1,20 +1,17 @@
-# AI可視化辦公室 · Morris Desk (v0.3)
+# AI可視化辦公室 · visual-office
 
-Swedish-modern **Three.js** office + CSS **儀表板** dashboard, wired to 11 Grok Bot specialists.
+Swedish-modern 3D office + dashboard for Morris Desk Grok Bot specialists.
 
 **Live:** https://morriscsy.github.io/visual-office/
 
+## v0.3.1
+- Flex layout (header in flow) — fixes iPhone Safari blank WebGL canvas + header overlap
+- Announcement feed collapsed by default on mobile (chip → bottom sheet); remembered in localStorage
+- Zone labels stay inside cards; paper bar respects safe-area
+- Mobile: lower shadow maps, ResizeObserver + visualViewport resize, touch orbit
+
 ## Views
-Use the top segmented control:
-- **3D辦公室** — light oak / soft daylight scene; voxel staff walk to 洗手間 · 茶水間 · chat, then return to desks
-- **儀表板 Dashboard** — v0.1 CSS floor-plan desks by zone (會議室 / 宏觀 / 策略 / 圖形 / 筆記)
+- **3D辦公室** — Three.js rooms, walking staff (toilet / pantry / chat)
+- **儀表板** — CSS floor-plan desks with deep links
 
-Both views share `office-status.json` (idle / active / alert, paper bar, kill-switch, announcement feed) and the same `grokbot://` agent ids.
-
-## Controls (3D)
-- Drag — orbit · Scroll / pinch — zoom · Click avatar — desk panel
-
-## Status
-Specialists update desks / feed by editing `office-status.json` on `main`.
-
-Public-macro / paper only — no secrets, no live brokerage.
+Status: `office-status.json` (public / paper only).
