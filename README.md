@@ -4,9 +4,9 @@ Morris Desk — static GitHub Pages office for 11 specialist bots.
 
 **Live:** https://morriscsy.github.io/visual-office/
 
-## v0.7 — Claymation / plasticine
+## v0.7.1 — Taller floors
 
-Magnific-style clay-animation office: peach/mustard cutaway diorama, chunky matte furniture, oversized-head clay bots, soft studio light. 3-floor layout (Reception / Markets / Engineering) kept from v0.5. EconPulse calendar/news/radio chat topics kept. Optional desktop Ray Trace toggle; default scene is clay (not glass/neon HQ).
+Same Magnific clay diorama as v0.7, with each story ~1.4× taller (FH 3.55 → 5.0; WALL_H 3.15 → 4.55; FLOOR_Y L2/L3 at 5.0 / 10.0). Elevator, stairs, room partitions, labels, lights, and camera framing updated. Clay style, agent layout, and EconPulse chats unchanged.
 
 ## Stack
 
